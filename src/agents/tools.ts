@@ -47,15 +47,28 @@ export async function fetchProviderStatus(
   return 'unreachable';
 }
 
+export const listAlertsInputSchema = z.object({
+  status: z.enum(['firing', 'resolved', 'all']).default('firing').describe('Estado do alerta a consultar: firing = ativos, resolved = resolvidos, all = todos.'),
+});
+
+export const openIncidentInputSchema = z.object({
+  title: z.string().min(1).describe('Título curto e específico do incidente, sem ambiguidades.'),
+  service: z.string().min(1).describe('Nome do serviço impactado, como checkout, payments ou auth.'),
+  severity: z.enum(['low', 'medium', 'high', 'critical']).describe('Severidade do incidente, seguindo a escala low, medium, high, critical.'),
+  summary: z.string().min(1).optional().describe('Resumo opcional com a causa percebida ou contexto operacional do incidente.'),
+});
+
+export const resolveIncidentInputSchema = z.object({
+  id: z.string().min(1).describe('Identificador do incidente que deve ser encerrado.'),
+});
+
 export const listAlertsTool = tool(
   async ({ status }) => JSON.stringify(listAlerts(status)),
   {
     name: 'list_alerts',
     description:
       'Lista alertas operacionais por estado para responder perguntas sobre o que está disparando ou já foi resolvido. Use esta ferramenta quando o operador perguntar "qual está ativo", "como está o plantão" ou "quais alertas já foram resolvidos".',
-    schema: z.object({
-      status: z.enum(['firing', 'resolved', 'all']).default('firing').describe('Estado do alerta a consultar: firing = ativos, resolved = resolvidos, all = todos.'),
-    }),
+    schema: listAlertsInputSchema,
   },
 );
 
@@ -77,12 +90,7 @@ export const openIncidentTool = tool(
     name: 'open_incident',
     description:
       'Abre um novo incidente operacional para um serviço quando há confirmação de impacto ou de uma condição que exige investigação e coordenação. Use esta ferramenta apenas depois de confirmar o problema, quando houver alerta ou falha evidente para um serviço específico.',
-    schema: z.object({
-      title: z.string().min(1).describe('Título curto e específico do incidente, sem ambiguidades.'),
-      service: z.string().min(1).describe('Nome do serviço impactado, como checkout, payments ou auth.'),
-      severity: z.enum(['low', 'medium', 'high', 'critical']).describe('Severidade do incidente, seguindo a escala low, medium, high, critical.'),
-      summary: z.string().min(1).optional().describe('Resumo opcional com a causa percebida ou contexto operacional do incidente.'),
-    }),
+    schema: openIncidentInputSchema,
   },
 );
 
@@ -92,9 +100,7 @@ export const resolveIncidentTool = tool(
     name: 'resolve_incident',
     description:
       'Resolve um incidente existente quando a causa foi mitigada e o impacto foi controlado. Use esta ferramenta após a ação corretiva ou confirmação de restabelecimento do serviço.',
-    schema: z.object({
-      id: z.string().min(1).describe('Identificador do incidente que deve ser encerrado.'),
-    }),
+    schema: resolveIncidentInputSchema,
   },
 );
 

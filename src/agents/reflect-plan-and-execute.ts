@@ -128,7 +128,13 @@ async function reflect(
       ['system', REFLECT_PROMPT],
       ['user', JSON.stringify({ input, remaining, summary, stepsUsed })],
     ]);
-    return result;
+    return {
+      confidence: result.confidence ?? 'low',
+      decision: result.decision,
+      reasoning: result.reasoning,
+      risk: result.risk ?? 'low',
+      updatedSteps: result.updatedSteps
+    };
   } catch {
     return heuristicReflect(input, remaining, summary, stepsUsed);
   }

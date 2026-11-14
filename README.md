@@ -89,6 +89,7 @@ Fixos: `baseURL = https://openrouter.ai/api/v1` e `temperature = 0`.
 | `npm run arena -- [flags]` | Executa a arena de estratégias |
 | `npm run reflect:plan-and-execute -- [flags]` | Atalho da arena só com `reflect-plan-and-execute` |
 | `npm run seed` | Restaura o seed (5 serviços, 6 alertas, 0 incidentes) |
+| `npm run mcp` | Sobe o servidor MCP `incidentarena` via stdio |
 | `npm test` | Roda a suíte de testes (`node:test`) |
 
 ## Estratégias de raciocínio
@@ -189,6 +190,22 @@ curl -X POST http://localhost:3000/chat \
 | `404` | Qualquer rota diferente de `POST /chat` | `{ error: "Not Found" }` |
 
 Limites: corpo máximo de 1 MB e `maxIterations` padrão 8 por requisição.
+
+## Servidor MCP
+
+O projeto expõe um servidor MCP em [src/mcp/server.ts](src/mcp/server.ts):
+
+```bash
+npm run mcp
+```
+
+Características:
+
+- Nome do servidor: `incidentarena`
+- Transporte: `stdio`
+- Tools expostas: `list_alerts`, `open_incident`, `resolve_incident`
+- Reuso da mesma fonte de verdade de validação (`zod`) e operações de store já usadas nas tools dos agentes
+- Diagnóstico em `stderr` (sem `console.log`, para não poluir o canal de protocolo em `stdout`)
 
 ## Trace e métricas
 

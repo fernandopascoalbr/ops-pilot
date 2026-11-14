@@ -23,5 +23,5 @@ test('POST /chat returns 400 when message is empty or whitespace', async () => {
 
   assert.equal(response.status, 400);
   assert.ok(Array.isArray(response.body.issues));
-  assert.ok(response.body.issues.some((issue) => issue.path.includes('message')));
+  assert.ok(response.body.issues.some((issue: any) => issue.path.includes('message')));
 });
