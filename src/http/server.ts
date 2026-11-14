@@ -2,11 +2,31 @@ import { createServer as createNodeServer, type IncomingMessage, type Server, ty
 import { z } from 'zod';
 import { UnknownStrategyError, defaultStrategyRegistry, resolveStrategy, type StrategyRegistry } from '../agents/index.js';
 import { ConversationNotFoundError, type ConversationMessage, type ConversationStore, SqliteConversationStore } from '../chat/index.js';
+import { LearningReflector, MemoryStore, type MemoryRecord } from '../memory/index.js';
 import { chatRequestSchema } from './chat-schema.js';
 
 const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_MAX_ITERATIONS = 8;
 const MAX_BODY_BYTES = 1_000_000;
+const DEFAULT_MEMORY_RECALL_K = 3;
+const DEFAULT_MEMORY_RECALL_MIN_SCORE = 0.3;
+
+const memoryRememberRequestSchema = z.object({
+  userId: z.string().trim().min(1, 'userId must not be empty'),
+  fact: z.string().trim().min(1, 'fact must not be empty'),
+});
+
+const memoryForgetRequestSchema = z.object({
+  userId: z.string().trim().min(1, 'userId must not be empty'),
+  target: z.string().trim().min(1, 'target must not be empty'),
+});
+
+const memoryRecallQuerySchema = z.object({
+  userId: z.string().trim().min(1, 'userId must not be empty'),
+  query: z.string().trim().min(1, 'query must not be empty'),
+  k: z.coerce.number().int().positive().max(10).default(DEFAULT_MEMORY_RECALL_K),
+  minScore: z.coerce.number().min(0).max(1).default(DEFAULT_MEMORY_RECALL_MIN_SCORE),
+});
 
 type ChatResultBody = {
   conversationId: string;
@@ -22,11 +42,18 @@ export type ChatHttpResponse =
   | { status: 422; body: { error: string } }
   | { status: 504; body: { error: string } };
 
+type MemoryHttpResponse =
+  | { status: 200; body: Record<string, unknown> }
+  | { status: 201; body: Record<string, unknown> }
+  | { status: 400; body: { issues: z.ZodIssue[] | Array<{ code: string; message: string; path: (string | number)[] }> } };
+
 export type ChatServerOptions = {
   timeoutMs?: number;
   maxIterations?: number;
   registry?: StrategyRegistry;
   conversationStore?: ConversationStore;
+  memoryStore?: MemoryStore;
+  learningReflector?: Pick<LearningReflector, 'reflectAndRememberAsync'>;
 };
 
 class TimeoutError extends Error {
@@ -52,16 +79,25 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   }
 }
 
-function composeMessageWithHistory(message: string, history: ConversationMessage[]): string {
-  if (history.length === 0) {
-    return message;
+function composeMessageWithHistory(message: string, history: ConversationMessage[], memories: MemoryRecord[] = []): string {
+  const sections: string[] = [];
+
+  if (memories.length > 0) {
+    const memoryText = memories
+      .map((memory) => `- ${memory.fact}`)
+      .join('\n');
+    sections.push(`Memórias relevantes do usuário:\n${memoryText}`);
   }
 
-  const historyText = history
-    .map((entry) => `${entry.role}: ${entry.content}`)
-    .join('\n');
+  if (history.length > 0) {
+    const historyText = history
+      .map((entry) => `${entry.role}: ${entry.content}`)
+      .join('\n');
+    sections.push(`Histórico recente da conversa:\n${historyText}`);
+  }
 
-  return `Histórico recente da conversa:\n${historyText}\n\nMensagem atual:\n${message}`;
+  sections.push(`Mensagem atual:\n${message}`);
+  return sections.join('\n\n');
 }
 
 export async function processChatRequest(body: unknown, options: ChatServerOptions = {}): Promise<ChatHttpResponse> {
@@ -77,16 +113,40 @@ export async function processChatRequest(body: unknown, options: ChatServerOptio
   const maxIterations = options.maxIterations ?? DEFAULT_MAX_ITERATIONS;
   const registry = options.registry ?? defaultStrategyRegistry;
   const conversationStore = options.conversationStore ?? new SqliteConversationStore();
+  const memoryStore = options.memoryStore ?? new MemoryStore();
+  const learningReflector = options.learningReflector ?? new LearningReflector({
+    memoryStore,
+    onAudit(event) {
+      console.info(
+        '[learning-reflector]',
+        JSON.stringify({
+          userId: event.userId,
+          hasLearning: event.hasLearning,
+          stored: event.stored,
+          reason: event.reason,
+        }),
+      );
+    },
+  });
 
   try {
     const conversationId = parsed.data.conversationId ?? conversationStore.create();
     const history = conversationStore.lastMessages(conversationId, 12);
+    const relevantMemories = parsed.data.userId
+      ? await memoryStore.recall(parsed.data.userId, parsed.data.message, 3, 0.3)
+      : [];
     const strategy = resolveStrategy(parsed.data.strategy, { reflect: parsed.data.reflect, registry });
     conversationStore.append(conversationId, 'user', parsed.data.message);
 
-    const composedInput = composeMessageWithHistory(parsed.data.message, history);
+    const composedInput = composeMessageWithHistory(parsed.data.message, history, relevantMemories);
     const result = await withTimeout(strategy.run(composedInput, maxIterations), timeoutMs);
     conversationStore.append(conversationId, 'assistant', result.answer);
+    if (parsed.data.userId) {
+      learningReflector.reflectAndRememberAsync({
+        userId: parsed.data.userId,
+        lastUserMessage: parsed.data.message,
+      });
+    }
 
     return {
       status: 200,
@@ -97,6 +157,7 @@ export async function processChatRequest(body: unknown, options: ChatServerOptio
         metrics: {
           ...result.metrics,
           historyMessages: history.length,
+          memoryRecallCount: relevantMemories.length,
         },
       },
     };
@@ -121,6 +182,96 @@ export async function processChatRequest(body: unknown, options: ChatServerOptio
     }
     throw error;
   }
+}
+
+async function processRememberMemoryRequest(body: unknown, memoryStore: MemoryStore): Promise<MemoryHttpResponse> {
+  const parsed = memoryRememberRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return {
+      status: 400,
+      body: { issues: parsed.error.issues },
+    };
+  }
+
+  const stored = await memoryStore.remember(parsed.data.userId, parsed.data.fact);
+  if (!stored) {
+    return {
+      status: 200,
+      body: {
+        stored: false,
+        reason: 'duplicate',
+      },
+    };
+  }
+
+  return {
+    status: 201,
+    body: {
+      stored: true,
+      memory: {
+        id: stored.id,
+        userId: stored.userId,
+        fact: stored.fact,
+        createdAt: stored.createdAt,
+      },
+    },
+  };
+}
+
+async function processRecallMemoryRequest(url: URL, memoryStore: MemoryStore): Promise<MemoryHttpResponse> {
+  const parsed = memoryRecallQuerySchema.safeParse({
+    userId: url.searchParams.get('userId') ?? '',
+    query: url.searchParams.get('query') ?? '',
+    k: url.searchParams.get('k') ?? DEFAULT_MEMORY_RECALL_K,
+    minScore: url.searchParams.get('minScore') ?? DEFAULT_MEMORY_RECALL_MIN_SCORE,
+  });
+
+  if (!parsed.success) {
+    return {
+      status: 400,
+      body: { issues: parsed.error.issues },
+    };
+  }
+
+  const memories = await memoryStore.recall(
+    parsed.data.userId,
+    parsed.data.query,
+    parsed.data.k,
+    parsed.data.minScore,
+  );
+
+  return {
+    status: 200,
+    body: {
+      memories: memories.map((entry) => ({
+        id: entry.id,
+        userId: entry.userId,
+        fact: entry.fact,
+        createdAt: entry.createdAt,
+        score: entry.score ?? 0,
+      })),
+    },
+  };
+}
+
+async function processForgetMemoryRequest(body: unknown, memoryStore: MemoryStore): Promise<MemoryHttpResponse> {
+  const parsed = memoryForgetRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return {
+      status: 400,
+      body: { issues: parsed.error.issues },
+    };
+  }
+
+  const removed = memoryStore.forgetPreference(parsed.data.userId, parsed.data.target);
+  return {
+    status: 200,
+    body: {
+      removed,
+      userId: parsed.data.userId,
+      target: parsed.data.target,
+    },
+  };
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
@@ -156,29 +307,77 @@ function sendJson(response: ServerResponse, statusCode: number, payload: unknown
 
 export function createServer(options: ChatServerOptions = {}): Server {
   const conversationStore = options.conversationStore ?? new SqliteConversationStore();
+  const memoryStore = options.memoryStore ?? new MemoryStore();
+  const learningReflector = options.learningReflector ?? new LearningReflector({
+    memoryStore,
+    onAudit(event) {
+      console.info(
+        '[learning-reflector]',
+        JSON.stringify({
+          userId: event.userId,
+          hasLearning: event.hasLearning,
+          stored: event.stored,
+          reason: event.reason,
+        }),
+      );
+    },
+  });
 
   return createNodeServer(async (request, response) => {
-    if (request.method !== 'POST' || request.url !== '/chat') {
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    if (request.method === 'POST' && url.pathname === '/chat') {
+      const body = await readJsonBody(request);
+      if (body === Symbol.for('invalid-json-body')) {
+        sendJson(response, 400, {
+          issues: [
+            {
+              code: 'custom',
+              message: 'Invalid JSON body',
+              path: [],
+            },
+          ],
+        });
+        return;
+      }
+
+      const result = await processChatRequest(body, { ...options, conversationStore, memoryStore, learningReflector });
+      sendJson(response, result.status, result.body);
+      return;
+    }
+
+    if (url.pathname === '/memories' && request.method === 'GET') {
+      const result = await processRecallMemoryRequest(url, memoryStore);
+      sendJson(response, result.status, result.body);
+      return;
+    }
+
+    if (url.pathname === '/memories' && (request.method === 'POST' || request.method === 'DELETE')) {
+      const body = await readJsonBody(request);
+      if (body === Symbol.for('invalid-json-body')) {
+        sendJson(response, 400, {
+          issues: [
+            {
+              code: 'custom',
+              message: 'Invalid JSON body',
+              path: [],
+            },
+          ],
+        });
+        return;
+      }
+
+      const result = request.method === 'POST'
+        ? await processRememberMemoryRequest(body, memoryStore)
+        : await processForgetMemoryRequest(body, memoryStore);
+      sendJson(response, result.status, result.body);
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname !== '/chat') {
       sendJson(response, 404, { error: 'Not Found' });
       return;
     }
-
-    const body = await readJsonBody(request);
-    if (body === Symbol.for('invalid-json-body')) {
-      sendJson(response, 400, {
-        issues: [
-          {
-            code: 'custom',
-            message: 'Invalid JSON body',
-            path: [],
-          },
-        ],
-      });
-      return;
-    }
-
-    const result = await processChatRequest(body, { ...options, conversationStore });
-    sendJson(response, result.status, result.body);
+    sendJson(response, 404, { error: 'Not Found' });
   });
 }
 

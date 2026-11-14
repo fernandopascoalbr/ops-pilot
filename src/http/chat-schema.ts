@@ -5,6 +5,7 @@ export const chatRequestSchema = z.object({
   strategy: z.string().trim().min(1, 'strategy must not be empty').optional(),
   reflect: z.boolean().optional().default(false),
   conversationId: z.string().trim().min(1, 'conversationId must not be empty').optional(),
+  userId: z.string().trim().min(1, 'userId must not be empty').optional(),
 });
 
 export type ChatRequest = z.infer<typeof chatRequestSchema>;

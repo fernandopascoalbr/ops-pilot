@@ -1,11 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
+  forgetPreferenceInputSchema,
   listAlertsInputSchema,
   openIncidentInputSchema,
   resolveIncidentInputSchema,
 } from '../agents/tools.js';
-import { handleListAlerts, handleOpenIncident, handleResolveIncident } from './handlers.js';
+import { handleForgetPreference, handleListAlerts, handleOpenIncident, handleResolveIncident } from './handlers.js';
 import { logErrorToStderr, logToStderr } from './logger.js';
 
 function createServer() {
@@ -35,6 +36,18 @@ function createServer() {
     },
     async ({ title, service, severity, summary }) => ({
       content: [{ type: 'text', text: JSON.stringify(handleOpenIncident({ title, service, severity, summary })) }],
+    }),
+  );
+
+  server.registerTool(
+    'forget_preference',
+    {
+      description:
+        'Remove uma preferência aprendida da memória semântica para um usuário específico.',
+      inputSchema: forgetPreferenceInputSchema.shape,
+    },
+    async ({ userId, target }) => ({
+      content: [{ type: 'text', text: JSON.stringify(handleForgetPreference({ userId, target })) }],
     }),
   );
 

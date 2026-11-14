@@ -62,6 +62,11 @@ export const resolveIncidentInputSchema = z.object({
   id: z.string().min(1).describe('Identificador do incidente que deve ser encerrado.'),
 });
 
+export const forgetPreferenceInputSchema = z.object({
+  userId: z.string().min(1).describe('Identificador do usuário dono da preferência aprendida.'),
+  target: z.string().min(1).describe('Trecho ou preferência alvo para remoção segura.'),
+});
+
 export const listAlertsTool = tool(
   async ({ status }) => JSON.stringify(listAlerts(status)),
   {

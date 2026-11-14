@@ -2,8 +2,10 @@ import { once } from 'node:events';
 import { SqliteConversationStore } from '../../src/chat/sqlite-conversation-store.js';
 import { createServer, type ChatServerOptions } from '../../src/http/server.js';
 
-export async function postChat(
-  body: Record<string, unknown>,
+export async function requestJson(
+  path: string,
+  method: string,
+  body: Record<string, unknown> | undefined,
   options: ChatServerOptions = {},
 ): Promise<{ status: number; body: any }> {
   const server = createServer({
@@ -20,12 +22,12 @@ export async function postChat(
   }
 
   try {
-    const response = await fetch(`http://127.0.0.1:${address.port}/chat`, {
-      method: 'POST',
+    const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
+      method,
       headers: {
         'content-type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: body ? JSON.stringify(body) : undefined,
     });
     const json = await response.json();
     return {
@@ -36,5 +38,12 @@ export async function postChat(
     server.close();
     await once(server, 'close');
   }
+}
+
+export async function postChat(
+  body: Record<string, unknown>,
+  options: ChatServerOptions = {},
+): Promise<{ status: number; body: any }> {
+  return requestJson('/chat', 'POST', body, options);
 }
 

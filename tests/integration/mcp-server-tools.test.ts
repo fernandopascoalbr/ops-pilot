@@ -13,7 +13,7 @@ test('mcp server lists required tools and handles open/resolve incident flow', a
     const { tools } = await client.listTools();
     const names = tools.map((tool) => tool.name).sort();
 
-    assert.deepEqual(names, ['list_alerts', 'open_incident', 'resolve_incident']);
+    assert.deepEqual(names, ['forget_preference', 'list_alerts', 'open_incident', 'resolve_incident']);
 
     const openResult = await client.callTool({
       name: 'open_incident',

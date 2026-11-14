@@ -178,6 +178,8 @@ curl -X POST http://localhost:3000/chat \
 | `message` | string (não vazia) | Sim | Pedido do usuário |
 | `strategy` | string | Não | Padrão `react` |
 | `reflect` | boolean | Não | Padrão `false`; adiciona evento `critique` |
+| `conversationId` | string | Não | Reaproveita contexto recente da conversa |
+| `userId` | string | Não | Escopo da memória semântica por usuário |
 
 **Respostas**:
 
@@ -191,6 +193,20 @@ curl -X POST http://localhost:3000/chat \
 
 Limites: corpo máximo de 1 MB e `maxIterations` padrão 8 por requisição.
 
+### Memória semântica e filtro de relevância
+
+Quando `userId` é enviado, o `/chat` pode injetar memórias semânticas relevantes antes da execução da estratégia.
+
+- O recall é limitado ao top-3 itens por similaridade.
+- Há filtro mínimo de score (`>= 0.3`) para evitar ruído no prompt.
+- Esse filtro é crítico para reduzir custo, evitar contexto impreciso e manter apenas informações úteis na entrada do agente.
+
+### Endpoint `/memories`
+
+- `POST /memories` cria memória por usuário (`{ userId, fact }`) com deduplicação semântica.
+- `GET /memories?userId=...&query=...&k=...&minScore=...` faz recall top-k com threshold de score.
+- `DELETE /memories` remove preferência por alvo (`{ userId, target }`) sem afetar memórias de outros usuários.
+
 ## Servidor MCP
 
 O projeto expõe um servidor MCP em [src/mcp/server.ts](src/mcp/server.ts):
@@ -203,9 +219,16 @@ Características:
 
 - Nome do servidor: `opspilot`
 - Transporte: `stdio`
-- Tools expostas: `list_alerts`, `open_incident`, `resolve_incident`
+- Tools expostas: `list_alerts`, `open_incident`, `resolve_incident`, `forget_preference`
 - Reuso da mesma fonte de verdade de validação (`zod`) e operações de store já usadas nas tools dos agentes
 - Diagnóstico em `stderr` (sem `console.log`, para não poluir o canal de protocolo em `stdout`)
+
+### Aprendizado contínuo (memory reflection)
+
+- Após cada resposta do chat, a última mensagem do usuário é analisada para identificar aprendizado durável.
+- O aprendizado é persistido de forma assíncrona para não bloquear a resposta principal.
+- Pedidos pontuais e conteúdo sensível (segredos) são bloqueados e não viram memória.
+- A ferramenta `forget_preference` permite remover preferências aprendidas de forma explícita e isolada por usuário.
 
 ## Trace e métricas
 

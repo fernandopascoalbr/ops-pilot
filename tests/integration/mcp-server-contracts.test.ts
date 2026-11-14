@@ -24,6 +24,11 @@ test('mcp server exposes tool input schemas matching contract constraints', asyn
     const resolveIncidentSchema = byName.get('resolve_incident')?.inputSchema as any;
     assert.deepEqual(resolveIncidentSchema?.required, ['id']);
     assert.equal(resolveIncidentSchema?.properties?.id?.minLength, 1);
+
+    const forgetPreferenceSchema = byName.get('forget_preference')?.inputSchema as any;
+    assert.deepEqual(forgetPreferenceSchema?.required, ['userId', 'target']);
+    assert.equal(forgetPreferenceSchema?.properties?.userId?.minLength, 1);
+    assert.equal(forgetPreferenceSchema?.properties?.target?.minLength, 1);
   } finally {
     await closeMcpTestClient(client, transport);
   }
