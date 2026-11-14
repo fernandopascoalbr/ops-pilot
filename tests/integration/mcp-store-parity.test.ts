@@ -10,7 +10,7 @@ type ToolTextContent = { type: 'text'; text: string };
 type ToolResult = { content?: ToolTextContent[] };
 
 test('mcp operations persist in the same OpsStore backing database', async () => {
-  const dbPath = `/tmp/incidentarena-mcp-${randomUUID()}.db`;
+  const dbPath = `/tmp/opspilot-mcp-${randomUUID()}.db`;
   const { client, transport } = await createMcpTestClient({ dbPath });
 
   try {

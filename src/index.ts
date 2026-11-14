@@ -7,7 +7,7 @@ function main() {
   const server = createServer();
 
   server.listen(port, () => {
-    console.log(`IncidentArena HTTP server running on port ${port}`);
+    console.log(`OpsPilot HTTP server running on port ${port}`);
   });
 }
 

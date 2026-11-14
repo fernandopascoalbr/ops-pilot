@@ -3,7 +3,7 @@
 ## Decision 1: Expor servidor MCP dedicado com transporte stdio
 
 ### Decision
-Implementar um entrypoint dedicado para MCP com nome de servidor `incidentarena`, usando transporte stdio e ciclo de vida próprio.
+Implementar um entrypoint dedicado para MCP com nome de servidor `opspilot`, usando transporte stdio e ciclo de vida próprio.
 
 ### Rationale
 - Atende o requisito explícito de integração com clientes MCP.

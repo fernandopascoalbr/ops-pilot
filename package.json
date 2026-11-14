@@ -1,7 +1,7 @@
 {
-  "name": "incident-arena",
+  "name": "ops-pilot",
   "version": "1.0.0",
-  "description": "IncidentArena reasoning engine with strategy comparison and bounded incident workflows",
+  "description": "OpsPilot reasoning engine with strategy comparison and bounded incident workflows",
   "main": "index.js",
   "type": "module",
   "scripts": {

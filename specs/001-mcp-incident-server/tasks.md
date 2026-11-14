@@ -40,7 +40,7 @@
 
 ## Phase 3: User Story 1 - Operar incidentes via MCP (Priority: P1) 🎯 MVP
 
-**Goal**: Expor `list_alerts`, `open_incident` e `resolve_incident` no servidor MCP `incidentarena`.
+**Goal**: Expor `list_alerts`, `open_incident` e `resolve_incident` no servidor MCP `opspilot`.
 
 **Independent Test**: Subir o servidor MCP e validar que as três tools aparecem no catálogo e executam fluxo básico.
 
@@ -51,7 +51,7 @@
 
 ### Implementation for User Story 1
 
-- [X] T009 [US1] Implementar inicialização do servidor `incidentarena` com transporte stdio em [src/mcp/server.ts](/Users/fernando/Repos/unipds/04-agentes-audonomos-spec/arena-de-incidentes/src/mcp/server.ts)
+- [X] T009 [US1] Implementar inicialização do servidor `opspilot` com transporte stdio em [src/mcp/server.ts](/Users/fernando/Repos/unipds/04-agentes-audonomos-spec/arena-de-incidentes/src/mcp/server.ts)
 - [X] T010 [US1] Registrar a tool `list_alerts` em [src/mcp/server.ts](/Users/fernando/Repos/unipds/04-agentes-audonomos-spec/arena-de-incidentes/src/mcp/server.ts) com a restrição literal `status enum [firing, resolved, all], default firing` definida em [specs/001-mcp-incident-server/contracts/mcp-incident-server.contract.yaml](/Users/fernando/Repos/unipds/04-agentes-audonomos-spec/arena-de-incidentes/specs/001-mcp-incident-server/contracts/mcp-incident-server.contract.yaml)
 - [X] T011 [US1] Registrar a tool `open_incident` em [src/mcp/server.ts](/Users/fernando/Repos/unipds/04-agentes-audonomos-spec/arena-de-incidentes/src/mcp/server.ts) com as restrições literais `required [title, service, severity]`, `title minLength 1`, `service minLength 1`, `severity enum [low, medium, high, critical]`, `summary minLength 1 nullable true` definidas em [specs/001-mcp-incident-server/contracts/mcp-incident-server.contract.yaml](/Users/fernando/Repos/unipds/04-agentes-audonomos-spec/arena-de-incidentes/specs/001-mcp-incident-server/contracts/mcp-incident-server.contract.yaml)
 - [X] T012 [US1] Registrar a tool `resolve_incident` em [src/mcp/server.ts](/Users/fernando/Repos/unipds/04-agentes-audonomos-spec/arena-de-incidentes/src/mcp/server.ts) com a restrição literal `id minLength 1` definida em [specs/001-mcp-incident-server/contracts/mcp-incident-server.contract.yaml](/Users/fernando/Repos/unipds/04-agentes-audonomos-spec/arena-de-incidentes/specs/001-mcp-incident-server/contracts/mcp-incident-server.contract.yaml)

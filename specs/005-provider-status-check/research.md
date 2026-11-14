@@ -6,7 +6,7 @@ A ferramenta `check_provider_status` será implementada como uma tool do agente 
 
 ## Rationale
 
-- O requisito da feature é específico e está alinhado ao uso operacional do IncidentArena: distinguir falhas internas de indisponibilidade externa.
+- O requisito da feature é específico e está alinhado ao uso operacional do OpsPilot: distinguir falhas internas de indisponibilidade externa.
 - O StatusPage público é a fonte apropriada e fornece resposta estruturada com `status.indicator` e `status.description`.
 - A validação com Zod na borda e o limite de 5 segundos reduzem risco operacional e evitam que a ferramenta bloqueie o diagnóstico.
 - O retry único em falhas transitórias e o retorno observável reduzem ruído sem expor stack traces ou exceções não tratadas.

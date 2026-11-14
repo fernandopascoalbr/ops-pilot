@@ -7,7 +7,7 @@
 **Status**: Draft
 
 **Input**: User description: "Persistência real de operações:
-- SqliteOpsStore (src/store/sqlite-ops-store.ts) implementa a interface OpsStore existente via node:sqlite (DatabaseSync); caminho em OPSPILOT_DB (default ./data/incidentarena.db); ':memory:' nos testes
+- SqliteOpsStore (src/store/sqlite-ops-store.ts) implementa a interface OpsStore existente via node:sqlite (DatabaseSync); caminho em OPSPILOT_DB (default ./data/opspilot.db); ':memory:' nos testes
 - 4 tabelas - services, alerts, incidents, runbooks - espelhando os tipos atuais do domínio (incidents ganha resolved_at e summary, anuláveis); DDL idempotente no construtor; CHECK em todo campo de domínio fechado (tier, severity, status)
 - seed idempotente = cenário Mercadinho do mock (5 serviços, 6 alertas: 3 firing, 3 resolved; runbooks de checkout/payments/auth)
 - prepared statements em toda query; sem SQL concatenado

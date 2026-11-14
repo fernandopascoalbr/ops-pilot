@@ -1,4 +1,4 @@
-# Research: IncidentArena Reasoning Engine
+# Research: OpsPilot Reasoning Engine
 
 ## Decisions
 
@@ -32,5 +32,5 @@
 ## Research Notes
 
 - No unresolved specification clarifications remain; the plan can proceed to design without blocking questions.
-- The selected architecture aligns with the repository constitution and the requested IncidentArena behavior.
+- The selected architecture aligns with the repository constitution and the requested OpsPilot behavior.
 - The implementation will deliberately keep business logic and tool execution separate from the model/provider configuration.

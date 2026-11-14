@@ -6,13 +6,13 @@
 
 **Status**: Draft
 
-**Input**: User description: "MCP server do incidentArena: src/mcp/server.ts com @modelcontextprotocol/sdk, transport stdio, expondo list_alerts, open_incident e resolve_incident - reutilizando o mesmo OpsStore e os mesmos schemas zod das tools existentes (uma unica fonte de verdade). Nome do server: incidentarena. script npm: mcp = "tsx src/mcp/server.ts" (se precisar de env, alterar o script e carregar elas antes). REGRA CRITICA: nenhum console.log no server - no stdio o stdout e o canal do protocolo; diagnóstico vai para o stderr. Test: sobe o server e valida o list de tools."
+**Input**: User description: "MCP server do OpsPilot: src/mcp/server.ts com @modelcontextprotocol/sdk, transport stdio, expondo list_alerts, open_incident e resolve_incident - reutilizando o mesmo OpsStore e os mesmos schemas zod das tools existentes (uma unica fonte de verdade). Nome do server: opspilot. script npm: mcp = "tsx src/mcp/server.ts" (se precisar de env, alterar o script e carregar elas antes). REGRA CRITICA: nenhum console.log no server - no stdio o stdout e o canal do protocolo; diagnóstico vai para o stderr. Test: sobe o server e valida o list de tools."
 
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Operar incidentes via MCP (Priority: P1)
 
-Como operador que integra o IncidentArena em clientes MCP, quero listar alertas e abrir/encerrar incidentes pelo servidor MCP para executar o fluxo operacional sem depender de outros canais.
+Como operador que integra o OpsPilot em clientes MCP, quero listar alertas e abrir/encerrar incidentes pelo servidor MCP para executar o fluxo operacional sem depender de outros canais.
 
 **Why this priority**: Este é o fluxo principal de valor: sem essas operações expostas, o servidor MCP não cumpre o objetivo funcional.
 
@@ -66,7 +66,7 @@ Como integrador MCP, quero que o canal de saída do protocolo permaneça limpo p
 
 ### Functional Requirements
 
-- **FR-001**: O sistema MUST disponibilizar um servidor MCP identificado como `incidentarena`.
+- **FR-001**: O sistema MUST disponibilizar um servidor MCP identificado como `opspilot`.
 - **FR-002**: O sistema MUST expor operações para listar alertas, abrir incidente e resolver incidente por meio do servidor MCP.
 - **FR-003**: O sistema MUST validar as entradas dessas operações com a mesma fonte de verdade de validação já usada nas ferramentas operacionais existentes.
 - **FR-004**: O sistema MUST aplicar as mudanças de estado operacional das operações MCP no mesmo repositório operacional compartilhado com as ferramentas existentes.
@@ -80,7 +80,7 @@ Como integrador MCP, quero que o canal de saída do protocolo permaneça limpo p
 
 - **Alerta**: Evento operacional que pode ser listado e usado como gatilho para abertura de incidente.
 - **Incidente**: Registro de resposta operacional com ciclo de vida (aberto/resolvido) e vínculo com alerta.
-- **Ferramenta MCP**: Capacidade exposta ao cliente MCP para executar ações operacionais no IncidentArena.
+- **Ferramenta MCP**: Capacidade exposta ao cliente MCP para executar ações operacionais no OpsPilot.
 - **Estado Operacional Compartilhado**: Fonte de dados persistida e reutilizada por múltiplos canais de automação para manter consistência de comportamento.
 
 ## Success Criteria *(mandatory)*

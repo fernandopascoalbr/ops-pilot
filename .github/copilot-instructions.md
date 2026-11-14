@@ -1,6 +1,6 @@
-# IncidentArena
+# OpsPilot
 
-IncidentArena é um copiloto que gerencia alertas e incidentes de produção. O projeto contém uma API e um agente LangChain/LangGraph sobre OpenRouter.
+OpsPilot é um copiloto que gerencia alertas e incidentes de produção. O projeto contém uma API e um agente LangChain/LangGraph sobre OpenRouter.
 
 ## Stack
 - Node.js LTS

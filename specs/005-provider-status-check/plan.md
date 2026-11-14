@@ -18,7 +18,7 @@ Adicionar uma tool de diagnóstico operacional para consultar o status público 
 
 **Testing**: `node --import tsx --test` com `fetch` injetável e testes de sucesso, timeout e payload inválido sem rede
 
-**Target Platform**: Backend/agent local em Node.js, executado dentro do ambiente do IncidentArena
+**Target Platform**: Backend/agent local em Node.js, executado dentro do ambiente do OpsPilot
 
 **Project Type**: Backend library/agent tooling dentro de um projeto TypeScript único
 

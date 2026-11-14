@@ -1,4 +1,4 @@
-# Feature Specification: IncidentArena Reasoning Engine
+# Feature Specification: OpsPilot Reasoning Engine
 
 **Feature Branch**: `[001-opspilot-reasoning-engine]`
 
@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: User description: "Núcleo de raciocinio do IncidentArena: - Interface comum ReasoningStrategy: name + run(input) -> (answer, trace, metrics). trace = eventos tipados (thought | action | observation | plan | critique | answer) action carrega (tool, args). metrics = (llmCalls, latencyMs). Fabrica única em src/agents/model.ts lendo OPENROUTER_API_KEY e OPENROUTER_MODEL (baseUrl do openrouter), temperature 0. - ferraemntas mock em src/agents/tools.ts sobre um store in-memory pré-populado (o seed primário: 5 serviços, 6 alertas variados - 3 firing, 3 resolved (crie um script para rodar o seed, execute ele ao final desse prompt)): list_alerts(status), open_incident(title, service, severity), resolve_incident(id), Schemas zod, banco mysql, utilizando sequelize. - Estratégia ReAct em src/agents/react.ts usando o agent ReAct pré-construído do langgraph com essas tools, capturando o trace completo. Estratégia Plan-and-Execute em src/agents/plan-and-execute.ts como grafo: planner (saída estruturada: lista de passos), executor (um passo por vez com as tools), replanner (revisa o restante após cada passo; encerra quando nao resta nada). Máximo de 8 passos. - Toda estratégia respeita limite de intereações e conta chamadas de LLM. - Arena mínima em src/arean.ts: roda 1+ estratégias sobre o mesmo input e imprime traces e metricas (flags --strategies e --max-iterations) - Testes: store e formatacao de trace (determinísticos, sem rede)"
+**Input**: User description: "Núcleo de raciocinio do OpsPilot: - Interface comum ReasoningStrategy: name + run(input) -> (answer, trace, metrics). trace = eventos tipados (thought | action | observation | plan | critique | answer) action carrega (tool, args). metrics = (llmCalls, latencyMs). Fabrica única em src/agents/model.ts lendo OPENROUTER_API_KEY e OPENROUTER_MODEL (baseUrl do openrouter), temperature 0. - ferraemntas mock em src/agents/tools.ts sobre um store in-memory pré-populado (o seed primário: 5 serviços, 6 alertas variados - 3 firing, 3 resolved (crie um script para rodar o seed, execute ele ao final desse prompt)): list_alerts(status), open_incident(title, service, severity), resolve_incident(id), Schemas zod, banco mysql, utilizando sequelize. - Estratégia ReAct em src/agents/react.ts usando o agent ReAct pré-construído do langgraph com essas tools, capturando o trace completo. Estratégia Plan-and-Execute em src/agents/plan-and-execute.ts como grafo: planner (saída estruturada: lista de passos), executor (um passo por vez com as tools), replanner (revisa o restante após cada passo; encerra quando nao resta nada). Máximo de 8 passos. - Toda estratégia respeita limite de intereações e conta chamadas de LLM. - Arena mínima em src/arean.ts: roda 1+ estratégias sobre o mesmo input e imprime traces e metricas (flags --strategies e --max-iterations) - Testes: store e formatacao de trace (determinísticos, sem rede)"
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -14,7 +14,7 @@
 
 An operations analyst can submit the same service alert to multiple reasoning strategies and compare how each one reasons, which actions it takes, and how many LLM calls it consumes. This makes it possible to choose the most reliable strategy without re-running the entire decision process manually.
 
-**Why this priority**: This is the primary value of the IncidentArena reasoning core: it turns incident triage into a measurable comparison between decision strategies and exposes evidence in the form of trace and metrics.
+**Why this priority**: This is the primary value of the OpsPilot reasoning core: it turns incident triage into a measurable comparison between decision strategies and exposes evidence in the form of trace and metrics.
 
 **Independent Test**: A single incident input can be evaluated against more than one strategy and deliver a comparable answer, full step-by-step trace, and cost/latency metrics.
 

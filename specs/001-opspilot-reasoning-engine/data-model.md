@@ -1,4 +1,4 @@
-# Data Model: IncidentArena Reasoning Engine
+# Data Model: OpsPilot Reasoning Engine
 
 ## Core Entities
 

@@ -1,4 +1,4 @@
-# Tasks: IncidentArena Reasoning Engine
+# Tasks: OpsPilot Reasoning Engine
 
 **Input**: Design documents from `/specs/001-opspilot-reasoning-engine/`
 

@@ -12,7 +12,7 @@ Validar que a ferramenta de diagnóstico de status externo consegue:
 
 - Node.js LTS
 - Dependências do projeto instaladas (`npm install`)
-- Ambiente de execução local do IncidentArena
+- Ambiente de execução local do OpsPilot
 
 ## Cenários validados
 

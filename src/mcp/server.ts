@@ -10,7 +10,7 @@ import { logErrorToStderr, logToStderr } from './logger.js';
 
 function createServer() {
   const server = new McpServer({
-    name: 'incidentarena',
+    name: 'opspilot',
     version: '1.0.0',
   });
 
@@ -57,7 +57,7 @@ async function main() {
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  logToStderr('incidentarena MCP server pronto (stdio)');
+  logToStderr('opspilot MCP server pronto (stdio)');
 }
 
 main().catch((error: unknown) => {

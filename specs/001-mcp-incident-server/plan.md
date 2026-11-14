@@ -6,7 +6,7 @@
 
 ## Summary
 
-Adicionar um servidor MCP chamado `incidentarena` com transporte stdio, expondo as operações `list_alerts`, `open_incident` e `resolve_incident`, reutilizando exatamente o mesmo `OpsStore` e os mesmos schemas Zod já usados nas tools existentes. O design prioriza fonte única de verdade para validação e regras de domínio, proíbe escrita de diagnóstico em stdout (somente stderr), e inclui validação prática de inicialização do servidor com checagem da listagem de tools.
+Adicionar um servidor MCP chamado `opspilot` com transporte stdio, expondo as operações `list_alerts`, `open_incident` e `resolve_incident`, reutilizando exatamente o mesmo `OpsStore` e os mesmos schemas Zod já usados nas tools existentes. O design prioriza fonte única de verdade para validação e regras de domínio, proíbe escrita de diagnóstico em stdout (somente stderr), e inclui validação prática de inicialização do servidor com checagem da listagem de tools.
 
 ## Technical Context
 
@@ -34,7 +34,7 @@ Adicionar um servidor MCP chamado `incidentarena` com transporte stdio, expondo 
 - Script npm dedicado para execução do servidor MCP
 
 **Scale/Scope**:
-- 1 servidor MCP (`incidentarena`)
+- 1 servidor MCP (`opspilot`)
 - 3 tools expostas (`list_alerts`, `open_incident`, `resolve_incident`)
 - 1 novo entrypoint em `src/mcp/server.ts`
 - Cobertura de teste para validação da listagem de tools

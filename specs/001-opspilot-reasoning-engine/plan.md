@@ -1,4 +1,4 @@
-# Implementation Plan: IncidentArena Reasoning Engine
+# Implementation Plan: OpsPilot Reasoning Engine
 
 **Branch**: `001-opspilot-reasoning-engine` | **Date**: 2026-11-03 | **Spec**: [spec.md](./spec.md)
 
@@ -6,7 +6,7 @@
 
 ## Summary
 
-The IncidentArena reasoning engine will provide a shared `ReasoningStrategy` contract, a single model factory for OpenRouter configuration, and a mock operational tool layer backed by an in-memory alert and incident store. The implementation will include both a ReAct strategy and a Plan-and-Execute strategy with bounded interaction limits, a comparison arena to run multiple strategies on the same input, and deterministic tests for a seeded data store and the reasoning trace formatter.
+The OpsPilot reasoning engine will provide a shared `ReasoningStrategy` contract, a single model factory for OpenRouter configuration, and a mock operational tool layer backed by an in-memory alert and incident store. The implementation will include both a ReAct strategy and a Plan-and-Execute strategy with bounded interaction limits, a comparison arena to run multiple strategies on the same input, and deterministic tests for a seeded data store and the reasoning trace formatter.
 
 ## Technical Context
 

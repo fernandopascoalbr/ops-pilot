@@ -11,7 +11,7 @@ import type {
   Severity,
 } from './ops-store.js';
 
-const DEFAULT_DB_PATH = './data/incidentarena.db';
+const DEFAULT_DB_PATH = './data/opspilot.db';
 const MERCADINHO_SERVICES: Service[] = [
   { id: 'svc-checkout', name: 'checkout', status: 'healthy', tier: 'core' },
   { id: 'svc-payments', name: 'payments', status: 'degraded', tier: 'core' },

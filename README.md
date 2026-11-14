@@ -1,4 +1,4 @@
-# IncidentArena
+# OpsPilot
 
 Núcleo de raciocínio para **triagem operacional de alertas e incidentes**, com múltiplas estratégias de agente autônomo que podem ser comparadas entre si (ReAct, Plan-and-Execute e Plan-and-Execute com reflexão). Os agentes operam sobre um store local de serviços, alertas e incidentes e podem ser usados por **CLI (arena)** ou por **API HTTP (`POST /chat`)**.
 
@@ -89,7 +89,7 @@ Fixos: `baseURL = https://openrouter.ai/api/v1` e `temperature = 0`.
 | `npm run arena -- [flags]` | Executa a arena de estratégias |
 | `npm run reflect:plan-and-execute -- [flags]` | Atalho da arena só com `reflect-plan-and-execute` |
 | `npm run seed` | Restaura o seed (5 serviços, 6 alertas, 0 incidentes) |
-| `npm run mcp` | Sobe o servidor MCP `incidentarena` via stdio |
+| `npm run mcp` | Sobe o servidor MCP `opspilot` via stdio |
 | `npm test` | Roda a suíte de testes (`node:test`) |
 
 ## Estratégias de raciocínio
@@ -201,7 +201,7 @@ npm run mcp
 
 Características:
 
-- Nome do servidor: `incidentarena`
+- Nome do servidor: `opspilot`
 - Transporte: `stdio`
 - Tools expostas: `list_alerts`, `open_incident`, `resolve_incident`
 - Reuso da mesma fonte de verdade de validação (`zod`) e operações de store já usadas nas tools dos agentes

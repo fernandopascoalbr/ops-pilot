@@ -273,7 +273,7 @@ Features e artefatos relevantes:
    - plan: [specs/003-add-chat-endpoint/plan.md](./specs/003-add-chat-endpoint/plan.md)
    - tasks: [specs/003-add-chat-endpoint/tasks.md](./specs/003-add-chat-endpoint/tasks.md)
 
-3. **IncidentArena Reasoning Engine** (base): [spec](./specs/001-opspilot-reasoning-engine/spec.md), [contrato da arena](./specs/001-opspilot-reasoning-engine/contracts/arena-cli.md)
+3. **OpsPilot Reasoning Engine** (base): [spec](./specs/001-opspilot-reasoning-engine/spec.md), [contrato da arena](./specs/001-opspilot-reasoning-engine/contracts/arena-cli.md)
 4. **Reflection Critique** (002): só [spec](./specs/002-reflection-critique/spec.md), em rascunho. Descreve `withReflection(strategy)` com crítico `{approved, feedback}`, regeneração e `maxReflections` (padrão 2)
 
 As trilhas mostram uma evolução concreta: de estratégia e arena (núcleo de raciocínio) para interface HTTP consumível por cliente externo.

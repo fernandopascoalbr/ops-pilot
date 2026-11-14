@@ -19,7 +19,7 @@ export async function createMcpTestClient(options: { dbPath?: string } = {}) {
   });
 
   const client = new Client({
-    name: 'incidentarena-test-client',
+    name: 'opspilot-test-client',
     version: '1.0.0',
   });
 

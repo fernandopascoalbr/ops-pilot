@@ -1,4 +1,4 @@
-# Specification Quality Checklist: IncidentArena Reasoning Engine
+# Specification Quality Checklist: OpsPilot Reasoning Engine
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-11-03

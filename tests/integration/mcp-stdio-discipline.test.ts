@@ -25,7 +25,7 @@ test('mcp server keeps diagnostics out of protocol stdout path', async () => {
 
     await client.listTools();
     await new Promise((resolveReady) => setTimeout(resolveReady, 100));
-    assert.match(stderr, /incidentarena MCP server pronto \(stdio\)/);
+    assert.match(stderr, /opspilot MCP server pronto \(stdio\)/);
   } finally {
     await closeMcpTestClient(client, transport);
   }

@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Validar ponta a ponta que o servidor MCP `incidentarena`:
+Validar ponta a ponta que o servidor MCP `opspilot`:
 - inicia via script dedicado,
 - registra as tools `list_alerts`, `open_incident` e `resolve_incident`,
 - mantém stdout reservado ao protocolo e diagnóstico em stderr.

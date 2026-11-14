@@ -1,4 +1,4 @@
-# Quickstart: IncidentArena Reasoning Engine
+# Quickstart: OpsPilot Reasoning Engine
 
 ## Prerequisites
 - Node.js LTS

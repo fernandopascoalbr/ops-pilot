@@ -6,7 +6,7 @@
 
 Representa a identidade pública do servidor MCP.
 
-- `name`: identificador estável do servidor (`incidentarena`)
+- `name`: identificador estável do servidor (`opspilot`)
 - `transport`: canal de comunicação (`stdio`)
 
 Validation rules:
