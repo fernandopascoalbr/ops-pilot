@@ -79,42 +79,5 @@
       "resolvedAt": "2026-11-03T07:10:00.000Z"
     }
   ],
-  "incidents": [
-    {
-      "id": "inc-1794667786080",
-      "title": "Incidente para auth-api",
-      "service": "auth-api",
-      "severity": "high",
-      "status": "open",
-      "openedAt": "2026-11-14T14:49:46.080Z",
-      "resolvedAt": null
-    },
-    {
-      "id": "inc-1794667786214",
-      "title": "Incidente para auth-api",
-      "service": "auth-api",
-      "severity": "high",
-      "status": "open",
-      "openedAt": "2026-11-14T14:49:46.214Z",
-      "resolvedAt": null
-    },
-    {
-      "id": "inc-1794667786215",
-      "title": "Incidente para auth-api",
-      "service": "auth-api",
-      "severity": "high",
-      "status": "open",
-      "openedAt": "2026-11-14T14:49:46.215Z",
-      "resolvedAt": null
-    },
-    {
-      "id": "inc-1794667786215",
-      "title": "Incidente para auth-api",
-      "service": "auth-api",
-      "severity": "high",
-      "status": "open",
-      "openedAt": "2026-11-14T14:49:46.215Z",
-      "resolvedAt": null
-    }
-  ]
+  "incidents": []
 }

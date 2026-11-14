@@ -356,3 +356,39 @@ npm test
 - implementar a spec 002 (crítico real com `maxReflections`)
 - fazer o executor do plan-and-execute usar as tools via LLM
 - decidir entre manter JSON ou migrar para MySQL/Sequelize, conforme a spec 001
+
+---
+
+## 15) Guardrails de IA já presentes (resumo para reaproveitar em projetos futuros)
+
+Checklist objetivo do que **já existe** e pode servir de baseline:
+
+1. **Timeout de requisição no endpoint de chat**
+   - proteção por `Promise.race` com erro dedicado e retorno HTTP `504`
+2. **Validação de entrada na fronteira HTTP (Zod)**
+   - payload inválido retorna `400` com `issues` detalhadas
+3. **Limite de tamanho do body**
+   - proteção contra payload excessivo (`MAX_BODY_BYTES`)
+4. **Limite de iteração/recursão do agente**
+   - `recursionLimit` no ReAct e clamp de iterações (1..8) nas estratégias planejadas
+5. **Política explícita de parada**
+   - interrupção por limite de passos, resolução ou risco crítico
+6. **Fallback seguro quando o modelo falha/não está configurado**
+   - execução heurística determinística para não quebrar o fluxo principal
+7. **Mapeamento explícito de erros de domínio e execução**
+   - `422` para estratégia desconhecida e `504` para timeout
+8. **Rastro auditável e métricas**
+   - `trace` tipado + métricas (`llmCalls`, `latencyMs`, `stepsUsed/interactionLimit`)
+9. **Testes de integração cobrindo falhas de operação**
+   - timeout, validação de payload e estratégia inválida
+
+### Observação importante
+
+Apesar da ideia geral estar correta, **retry automático com backoff não aparece como mecanismo transversal implementado** no código atual de chamada ao LLM/HTTP. Hoje a robustez está mais forte em timeout, validação, limites, políticas de parada e fallback.
+
+Se for usar este review como checklist de arquitetura para próximos projetos de IA, vale adicionar explicitamente:
+
+- retries com backoff exponencial + jitter
+- idempotência para operações com efeito colateral
+- circuit breaker/rate limiting
+- budget de custo/tokens por request

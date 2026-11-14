@@ -13,6 +13,26 @@ test('plan-and-execute runs with bounded steps and metrics', async () => {
   assert.ok(result.metrics.stepsUsed !== undefined);
 });
 
+test('plan-and-execute opens incident for service mentioned in input', async () => {
+  const previousApiKey = process.env.OPENROUTER_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+
+  try {
+    const result = await planAndExecuteStrategy.run('o p99 do checkout passou de 2 segundos, abra um incidente medium', 8);
+    const openIncidentEvent = result.trace.find((event) => event.type === 'action' && event.tool === 'open_incident');
+
+    assert.ok(openIncidentEvent);
+    assert.equal(openIncidentEvent.args?.service, 'checkout');
+    assert.equal(openIncidentEvent.args?.severity, 'medium');
+  } finally {
+    if (previousApiKey === undefined) {
+      delete process.env.OPENROUTER_API_KEY;
+    } else {
+      process.env.OPENROUTER_API_KEY = previousApiKey;
+    }
+  }
+});
+
 test('react strategy returns a result and audit trail', async () => {
   const result = await reactStrategy.run('Mostre o estado do plantão', 6);
   assert.ok(result.answer.length > 0);

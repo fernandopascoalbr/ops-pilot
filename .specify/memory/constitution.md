@@ -46,7 +46,9 @@ The project must remain aligned with the current runtime and tooling standards:
 - Zod only at system boundaries (HTTP, CLI, and external integration points)
 - Tests with `node:test` and `tsx`
 - LangChain/LangGraph over OpenRouter for agent orchestration
+- SQLite via `node:sqlite` as the default local operational persistence layer for domain state, not a traditional server-based database
 - Local runtime commands: `tsx src/index.ts` and `tsx src/cli.ts`
+- Operational persistence must respect `OPSPILOT_DB` for the database path (defaulting to `./data/incidentarena.db`), while tests must use `:memory:` to isolate state
 
 ## Development Workflow and Quality Gates
 
@@ -62,6 +64,10 @@ All product work follows the repository's engineering standards:
 
 This constitution supersedes generic framework assumptions and defines the non-negotiable operating rules for this repository. Any amendment requires a documented rationale, a version bump, and a clear migration note when behavior or guardrails change.
 
+Operational persistence decisions are part of the repository's governance. The use of SQLite via `node:sqlite` is required for local, auditable operational state; alternative database engines or server-hosted persistence are not the default path unless an explicit architecture exception is documented and justified.
+
 All changes must be reviewed against the constitution before being merged. If a proposed change conflicts with the principles above, the conflict must be resolved by a more explicit safety or operational requirement, not by weakening the standards.
 
-**Version**: 1.1.0 | **Ratified**: 2026-11-03 | **Last Amended**: 2026-11-03
+**Version**: 1.2.0 | **Ratified**: 2026-11-03 | **Last Amended**: 2026-11-14
+
+**Migration Note**: This amendment updates the repository to prefer SQLite-backed local operational persistence (`node:sqlite`) and clarifies the `OPSPILOT_DB` convention, while keeping the existing safety, evidence-driven, and testability principles intact.

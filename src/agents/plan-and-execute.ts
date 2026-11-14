@@ -16,6 +16,23 @@ const replannerSchema = z.object({
 
 const PLANNER_PROMPT = `Você é um planner operacional. Gere até 8 passos curtos, executáveis e priorizados para responder a um incidente ou alerta.`;
 const REPLANNER_PROMPT = `Decida se o plano deve continuar, ser ajustado ou encerrado. Responda apenas com decisão, motivo e lista opcional de passos ajustados.`;
+const severityOptions = ['low', 'medium', 'high', 'critical'] as const;
+
+function findMentionedService(text: string): string | undefined {
+  const normalized = text.toLowerCase();
+  const knownServices = Array.from(new Set(store.services.map((service) => service.name.toLowerCase())));
+  const matches = knownServices
+    .map((serviceName) => ({ serviceName, index: normalized.indexOf(serviceName) }))
+    .filter((match) => match.index >= 0)
+    .sort((left, right) => left.index - right.index);
+
+  return matches[0]?.serviceName;
+}
+
+function findMentionedSeverity(text: string): (typeof severityOptions)[number] | undefined {
+  const normalized = text.toLowerCase();
+  return severityOptions.find((severity) => normalized.includes(severity));
+}
 
 function fallbackPlan(input: string): string[] {
   const firingAlerts = listAlerts('firing');
@@ -86,7 +103,7 @@ async function replanner(input: string, remaining: string[], done: string[]): Pr
   return { decision: 'continue', reasoning: 'Seguindo com o plano atual.', updatedSteps: remaining };
 }
 
-async function executor(step: string): Promise<{ tool?: string; args?: Record<string, unknown>; summary: string }> {
+async function executor(step: string, input: string): Promise<{ tool?: string; args?: Record<string, unknown>; summary: string }> {
   const normalized = step.toLowerCase();
 
   if (normalized.includes('alert') && normalized.includes('listar')) {
@@ -99,12 +116,19 @@ async function executor(step: string): Promise<{ tool?: string; args?: Record<st
   }
 
   if (normalized.includes('incidente') && normalized.includes('abrir')) {
-    const firing = listAlerts('firing')[0];
-    if (!firing) {
+    const context = `${input} ${step}`;
+    const firingAlerts = listAlerts('firing');
+    const mentionedService = findMentionedService(context);
+    const targetService = mentionedService ?? firingAlerts[0]?.service;
+
+    if (!targetService) {
       return { summary: 'Nenhum alerta disparado para abrir incidente.', tool: 'open_incident', args: { title: 'Sem alerta', service: 'unknown', severity: 'low' } };
     }
 
-    const created = openIncident({ title: `Incidente para ${firing.service}`, service: firing.service, severity: firing.severity });
+    const alertForService = firingAlerts.find((alert) => alert.service.toLowerCase() === targetService.toLowerCase());
+    const mentionedSeverity = findMentionedSeverity(context);
+    const targetSeverity = mentionedSeverity ?? alertForService?.severity ?? firingAlerts[0]?.severity ?? 'medium';
+    const created = openIncident({ title: `Incidente para ${targetService}`, service: targetService, severity: targetSeverity });
     return {
       tool: 'open_incident',
       args: { title: created.title, service: created.service, severity: created.severity },
@@ -165,7 +189,7 @@ export const planAndExecuteStrategy: ReasoningStrategy = {
       stepsUsed += 1;
       trace.push(createTraceEvent('plan', `Executando passo ${stepsUsed}/${limit}: ${step}`));
 
-      const execution = await executor(step);
+      const execution = await executor(step, input);
       const summary = `${step} -> ${execution.summary}`;
       done.push(summary);
       trace.push(createTraceEvent('action', `Ação executada para o passo`, { tool: execution.tool, args: execution.args }));
