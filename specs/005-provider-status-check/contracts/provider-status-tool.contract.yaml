@@ -1,0 +1,35 @@
+tool:
+  name: check_provider_status
+  description: >-
+    Verifica o status público de um provedor externo para distinguir falhas internas
+    de indisponibilidade do provedor durante triagem operacional.
+  input:
+    type: object
+    required: []
+    properties:
+      provider:
+        type: string
+        enum: [github, cloudflare]
+        default: github
+        description: >-
+          Provedor externo cujo status será consultado. Use github para GitHub e
+          cloudflare para Cloudflare.
+  output:
+    type: string
+    example: "operational — All systems operational"
+    description: >-
+      Retorno compacto em uma linha com indicador e descrição do status atual.
+  errors:
+    - type: invalid_response
+      description: O payload da API pública não corresponde ao schema esperado.
+    - type: timeout
+      description: A requisição excedeu 5 segundos e a nova tentativa também falhou.
+    - type: network_or_server_failure
+      description: Falha de rede ou resposta 5xx após retry único.
+    - type: unsupported_provider
+      description: Provedor fora do enum suportado.
+  validation:
+    - zod: true
+    - timeout_ms: 5000
+    - retries: 1
+    - fetch_injected_for_tests: true

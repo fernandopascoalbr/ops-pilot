@@ -2,6 +2,51 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { store, listAlerts, listIncidents, openIncident, resolveIncident, consultarRunbook } from './ops-store.js';
 
+const statusSchema = z.object({
+  status: z.object({
+    indicator: z.string(),
+    description: z.string(),
+  }),
+});
+
+export const STATUS_URL = {
+  github: 'https://www.githubstatus.com/api/v2/status.json',
+  cloudflare: 'https://www.cloudflarestatus.com/api/v2/status.json',
+} as const;
+
+export type ProviderStatusKey = keyof typeof STATUS_URL;
+
+export async function fetchProviderStatus(
+  provider: ProviderStatusKey,
+  doFetch: typeof fetch = fetch,
+): Promise<string> {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const response = await doFetch(STATUS_URL[provider], { signal: AbortSignal.timeout(5000) });
+
+      if (response.status >= 500) {
+        throw new Error(`upstream ${response.status}`);
+      }
+
+      if (!response.ok) {
+        return `status page de ${provider} respondeu HTTP ${response.status}`;
+      }
+
+      const payload = await response.json();
+      const { status } = statusSchema.parse(payload);
+      return `${provider} está ${status.indicator} - ${status.description}`;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      if (attempt === 2) {
+        return `Não consegui consultar o status de ${provider} (${message}). Responda com base nos alertas internos e avise o plantonista da limitação.`;
+      }
+    }
+  }
+
+  return 'unreachable';
+}
+
 export const listAlertsTool = tool(
   async ({ status }) => JSON.stringify(listAlerts(status)),
   {
@@ -65,5 +110,17 @@ export const consultarRunbookTool = tool(
   },
 );
 
-export const opsTools = [listAlertsTool, listIncidentsTool, openIncidentTool, resolveIncidentTool, consultarRunbookTool];
+export const checkProviderStatusTool = tool(
+  async ({ provider = 'github' }) => fetchProviderStatus(provider),
+  {
+    name: 'check_provider_status',
+    description:
+      'Consulta o status público de um provedor externo para distinguir falhas internas de indisponibilidade do provedor durante triagem operacional. Use esta ferramenta quando houver suspeita de problema externo ou quando for necessário confirmar se a dependência fora do ar está impactando o ambiente.',
+    schema: z.object({
+      provider: z.enum(['github', 'cloudflare']).default('github').describe('Provedor externo cujo status será consultado: github para GitHub e cloudflare para Cloudflare. Use esta ferramenta quando houver suspeita de problema externo, como indisponibilidade do provedor, para separar falhas internas da dependência fora do ar.'),
+    }),
+  },
+);
+
+export const opsTools = [listAlertsTool, listIncidentsTool, openIncidentTool, resolveIncidentTool, consultarRunbookTool, checkProviderStatusTool];
 export { store };
