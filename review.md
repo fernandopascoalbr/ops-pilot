@@ -352,6 +352,10 @@ npm test
 
 ## 14) Próximos passos possíveis
 
+> Para conceitos de **memória de agentes** (histórico de sessão, fatos duráveis, refletor de aprendizado, esquecimento, working memory), veja o documento complementar: [memory-concepts.md](./memory-concepts.md).
+
+
+
 - commitar o código (ainda untracked)
 - implementar a spec 002 (crítico real com `maxReflections`)
 - fazer o executor do plan-and-execute usar as tools via LLM

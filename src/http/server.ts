@@ -1,6 +1,7 @@
 import { createServer as createNodeServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { z } from 'zod';
 import { UnknownStrategyError, defaultStrategyRegistry, resolveStrategy, type StrategyRegistry } from '../agents/index.js';
+import { ConversationNotFoundError, type ConversationMessage, type ConversationStore, SqliteConversationStore } from '../chat/index.js';
 import { chatRequestSchema } from './chat-schema.js';
 
 const DEFAULT_TIMEOUT_MS = 180_000;
@@ -8,6 +9,7 @@ const DEFAULT_MAX_ITERATIONS = 8;
 const MAX_BODY_BYTES = 1_000_000;
 
 type ChatResultBody = {
+  conversationId: string;
   answer: string;
   trace: unknown[];
   metrics: Record<string, unknown>;
@@ -16,6 +18,7 @@ type ChatResultBody = {
 export type ChatHttpResponse =
   | { status: 200; body: ChatResultBody }
   | { status: 400; body: { issues: z.ZodIssue[] | Array<{ code: string; message: string; path: (string | number)[] }> } }
+  | { status: 404; body: { error: string } }
   | { status: 422; body: { error: string } }
   | { status: 504; body: { error: string } };
 
@@ -23,6 +26,7 @@ export type ChatServerOptions = {
   timeoutMs?: number;
   maxIterations?: number;
   registry?: StrategyRegistry;
+  conversationStore?: ConversationStore;
 };
 
 class TimeoutError extends Error {
@@ -48,6 +52,18 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   }
 }
 
+function composeMessageWithHistory(message: string, history: ConversationMessage[]): string {
+  if (history.length === 0) {
+    return message;
+  }
+
+  const historyText = history
+    .map((entry) => `${entry.role}: ${entry.content}`)
+    .join('\n');
+
+  return `Histórico recente da conversa:\n${historyText}\n\nMensagem atual:\n${message}`;
+}
+
 export async function processChatRequest(body: unknown, options: ChatServerOptions = {}): Promise<ChatHttpResponse> {
   const parsed = chatRequestSchema.safeParse(body);
   if (!parsed.success) {
@@ -60,19 +76,37 @@ export async function processChatRequest(body: unknown, options: ChatServerOptio
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxIterations = options.maxIterations ?? DEFAULT_MAX_ITERATIONS;
   const registry = options.registry ?? defaultStrategyRegistry;
+  const conversationStore = options.conversationStore ?? new SqliteConversationStore();
 
   try {
+    const conversationId = parsed.data.conversationId ?? conversationStore.create();
+    const history = conversationStore.lastMessages(conversationId, 12);
     const strategy = resolveStrategy(parsed.data.strategy, { reflect: parsed.data.reflect, registry });
-    const result = await withTimeout(strategy.run(parsed.data.message, maxIterations), timeoutMs);
+    conversationStore.append(conversationId, 'user', parsed.data.message);
+
+    const composedInput = composeMessageWithHistory(parsed.data.message, history);
+    const result = await withTimeout(strategy.run(composedInput, maxIterations), timeoutMs);
+    conversationStore.append(conversationId, 'assistant', result.answer);
+
     return {
       status: 200,
       body: {
+        conversationId,
         answer: result.answer,
         trace: result.trace,
-        metrics: result.metrics,
+        metrics: {
+          ...result.metrics,
+          historyMessages: history.length,
+        },
       },
     };
   } catch (error) {
+    if (error instanceof ConversationNotFoundError) {
+      return {
+        status: 404,
+        body: { error: error.message },
+      };
+    }
     if (error instanceof UnknownStrategyError) {
       return {
         status: 422,
@@ -121,6 +155,8 @@ function sendJson(response: ServerResponse, statusCode: number, payload: unknown
 }
 
 export function createServer(options: ChatServerOptions = {}): Server {
+  const conversationStore = options.conversationStore ?? new SqliteConversationStore();
+
   return createNodeServer(async (request, response) => {
     if (request.method !== 'POST' || request.url !== '/chat') {
       sendJson(response, 404, { error: 'Not Found' });
@@ -141,7 +177,7 @@ export function createServer(options: ChatServerOptions = {}): Server {
       return;
     }
 
-    const result = await processChatRequest(body, options);
+    const result = await processChatRequest(body, { ...options, conversationStore });
     sendJson(response, result.status, result.body);
   });
 }

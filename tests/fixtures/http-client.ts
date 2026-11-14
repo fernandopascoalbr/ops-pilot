@@ -1,11 +1,15 @@
 import { once } from 'node:events';
+import { SqliteConversationStore } from '../../src/chat/sqlite-conversation-store.js';
 import { createServer, type ChatServerOptions } from '../../src/http/server.js';
 
 export async function postChat(
   body: Record<string, unknown>,
   options: ChatServerOptions = {},
 ): Promise<{ status: number; body: any }> {
-  const server = createServer(options);
+  const server = createServer({
+    ...options,
+    conversationStore: options.conversationStore ?? new SqliteConversationStore(':memory:'),
+  });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
 

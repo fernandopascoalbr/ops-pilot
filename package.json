@@ -5,11 +5,12 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx --env-file=.env src/index.ts",
+    "dev": "tsx --env-file=.env --watch src/index.ts",
     "arena": "tsx --env-file=.env src/arena.ts",
     "reflect:plan-and-execute": "tsx --env-file=.env src/arena.ts --strategies reflect-plan-and-execute",
     "seed": "tsx --env-file=.env scripts/seed-alerts.ts",
     "test": "node --import tsx --test tests/*.test.ts tests/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
     "mcp": "tsx src/mcp/server.ts"
   },
   "keywords": [

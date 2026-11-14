@@ -1,0 +1,94 @@
+contract: chat-persistent
+version: 1
+description: >
+  Contrato funcional do endpoint POST /chat com conversa persistente,
+  continuidade por conversationId e métrica de histórico utilizada.
+
+endpoint:
+  method: POST
+  path: /chat
+  content_type: application/json
+
+request:
+  required_fields: [message]
+  fields:
+    message:
+      type: string
+      required: true
+      min_length: 1
+    strategy:
+      type: string
+      required: false
+      default: react
+    reflect:
+      type: boolean
+      required: false
+      default: false
+    conversationId:
+      type: string
+      required: false
+      description: Identificador da conversa para continuidade
+
+responses:
+  "200":
+    description: Processamento concluído com sucesso
+    body:
+      required_fields: [conversationId, answer, trace, metrics]
+      fields:
+        conversationId:
+          type: string
+        answer:
+          type: string
+        trace:
+          type: array
+          item_schema:
+            type: object
+            required_fields: [type, message]
+        metrics:
+          type: object
+          required_fields: [llmCalls, latencyMs, historyMessages]
+          fields:
+            historyMessages:
+              type: number
+              min: 0
+              max: 12
+  "400":
+    description: Corpo inválido
+    body:
+      required_fields: [issues]
+      fields:
+        issues:
+          type: array
+  "404":
+    description: conversationId não encontrado
+    body:
+      required_fields: [error]
+      fields:
+        error:
+          type: string
+  "422":
+    description: Estratégia desconhecida
+    body:
+      required_fields: [error]
+      fields:
+        error:
+          type: string
+  "504":
+    description: Tempo limite excedido
+    body:
+      required_fields: [error]
+      fields:
+        error:
+          type: string
+
+behavioral_rules:
+  - id: BR-001
+    rule: Quando conversationId for omitido, uma nova conversa deve ser criada e devolvida na resposta.
+  - id: BR-002
+    rule: Quando conversationId válido for enviado, o mesmo id deve ser devolvido na resposta.
+  - id: BR-003
+    rule: O histórico usado na composição deve conter no máximo as 12 mensagens anteriores mais recentes da conversa.
+  - id: BR-004
+    rule: metrics.historyMessages deve representar exatamente a quantidade de mensagens históricas usadas na execução.
+  - id: BR-005
+    rule: Testes da funcionalidade devem executar com banco em memória e estratégia fake determinística.
