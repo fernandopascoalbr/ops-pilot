@@ -1,0 +1,86 @@
+contract: reflect-plan-and-execute
+version: 1
+description: >
+  Contrato funcional para a estratégia reflect-plan-and-execute no Ops Pilot.
+  Define entradas, saídas, métricas e eventos auditáveis esperados.
+
+strategy:
+  name: reflect-plan-and-execute
+  interface:
+    type: ReasoningStrategy
+    run_signature: run(input: string, maxIterations?: number) => Promise<StrategyRunResult>
+
+inputs:
+  input:
+    type: string
+    required: true
+    min_length: 1
+    description: Solicitação operacional do plantonista para tratamento de alerta/incidente.
+  maxIterations:
+    type: integer
+    required: false
+    default: 8
+    min: 1
+    max: 8
+    description: Limite máximo de iterações para prevenir loops e impor encerramento previsível.
+
+outputs:
+  answer:
+    type: string
+    required: true
+    description: Resumo final com evidências do que foi executado e decisão final.
+  trace:
+    type: array
+    required: true
+    item_schema:
+      type: object
+      required_fields: [type, message, timestamp]
+      fields:
+        type:
+          enum: [thought, action, observation, plan, critique, answer]
+        message:
+          type: string
+        tool:
+          type: string
+          required: false
+        args:
+          type: object
+          required: false
+        timestamp:
+          type: string
+          format: iso_datetime
+  metrics:
+    type: object
+    required: true
+    required_fields: [llmCalls, latencyMs]
+    fields:
+      llmCalls:
+        type: integer
+        min: 0
+      latencyMs:
+        type: integer
+        min: 0
+      interactionLimit:
+        type: integer
+        required: false
+      stepsUsed:
+        type: integer
+        required: false
+
+behavioral_rules:
+  - id: BR-001
+    rule: O planejamento inicial deve ocorrer antes da primeira ação de execução.
+  - id: BR-002
+    rule: Após cada passo executado deve existir um evento de reflexão (trace type critique) com decisão explícita.
+  - id: BR-003
+    rule: A decisão de reflexão deve ser uma entre continue, adjust ou end.
+  - id: BR-004
+    rule: A execução não pode ultrapassar o limite efetivo de iterações.
+  - id: BR-005
+    rule: Ao atingir limite ou baixa confiança, a saída final deve indicar fallback seguro.
+
+compatibility:
+  must_preserve:
+    - Contrato base de StrategyRunResult.
+    - Funcionamento das estratégias existentes react e plan-and-execute.
+    - Formato de trace e metrics consumido por arena/CLI/testes.

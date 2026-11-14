@@ -1,0 +1,120 @@
+{
+  "services": [
+    {
+      "id": "svc-auth",
+      "name": "auth-api",
+      "status": "healthy"
+    },
+    {
+      "id": "svc-payments",
+      "name": "payments-api",
+      "status": "degraded"
+    },
+    {
+      "id": "svc-search",
+      "name": "search-index",
+      "status": "healthy"
+    },
+    {
+      "id": "svc-billing",
+      "name": "billing-worker",
+      "status": "healthy"
+    },
+    {
+      "id": "svc-notify",
+      "name": "notification-gateway",
+      "status": "degraded"
+    }
+  ],
+  "alerts": [
+    {
+      "id": "alert-1",
+      "title": "Latency spike in auth-api",
+      "service": "auth-api",
+      "severity": "high",
+      "status": "firing",
+      "createdAt": "2026-11-03T08:00:00.000Z"
+    },
+    {
+      "id": "alert-2",
+      "title": "Payment retries above threshold",
+      "service": "payments-api",
+      "severity": "critical",
+      "status": "firing",
+      "createdAt": "2026-11-03T08:03:00.000Z"
+    },
+    {
+      "id": "alert-3",
+      "title": "Search queue backlog",
+      "service": "search-index",
+      "severity": "medium",
+      "status": "firing",
+      "createdAt": "2026-11-03T08:07:00.000Z"
+    },
+    {
+      "id": "alert-4",
+      "title": "Billing sync completed",
+      "service": "billing-worker",
+      "severity": "low",
+      "status": "resolved",
+      "createdAt": "2026-11-03T07:15:00.000Z",
+      "resolvedAt": "2026-11-03T07:35:00.000Z"
+    },
+    {
+      "id": "alert-5",
+      "title": "Notification gateway recovered",
+      "service": "notification-gateway",
+      "severity": "medium",
+      "status": "resolved",
+      "createdAt": "2026-11-03T07:22:00.000Z",
+      "resolvedAt": "2026-11-03T07:40:00.000Z"
+    },
+    {
+      "id": "alert-6",
+      "title": "Auth batch job cleared",
+      "service": "auth-api",
+      "severity": "low",
+      "status": "resolved",
+      "createdAt": "2026-11-03T06:50:00.000Z",
+      "resolvedAt": "2026-11-03T07:10:00.000Z"
+    }
+  ],
+  "incidents": [
+    {
+      "id": "inc-1794667786080",
+      "title": "Incidente para auth-api",
+      "service": "auth-api",
+      "severity": "high",
+      "status": "open",
+      "openedAt": "2026-11-14T14:49:46.080Z",
+      "resolvedAt": null
+    },
+    {
+      "id": "inc-1794667786214",
+      "title": "Incidente para auth-api",
+      "service": "auth-api",
+      "severity": "high",
+      "status": "open",
+      "openedAt": "2026-11-14T14:49:46.214Z",
+      "resolvedAt": null
+    },
+    {
+      "id": "inc-1794667786215",
+      "title": "Incidente para auth-api",
+      "service": "auth-api",
+      "severity": "high",
+      "status": "open",
+      "openedAt": "2026-11-14T14:49:46.215Z",
+      "resolvedAt": null
+    },
+    {
+      "id": "inc-1794667786215",
+      "title": "Incidente para auth-api",
+      "service": "auth-api",
+      "severity": "high",
+      "status": "open",
+      "openedAt": "2026-11-14T14:49:46.215Z",
+      "resolvedAt": null
+    }
+  ]
+}

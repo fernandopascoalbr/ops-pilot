@@ -1,13 +1,13 @@
 <!--
 Sync Impact Report
 - Version change: 0.x (legacy) → 1.1.0
-- Modified principles: legacy repository guidance → OpsPilot principles
+- Modified principles: legacy repository guidance → IncidentArena principles
 - Added sections: Technology Stack, Operational Architecture, Development Workflow
 - Removed sections: generic MVC framing and ambiguous process notes
 - Follow-up TODOs: none
 -->
 
-# OpsPilot Constitution
+# IncidentArena Constitution
 
 ## Core Principles
 
@@ -16,7 +16,7 @@ Every feature, change, and operational workflow begins with a spec captured in t
 Work must not bypass requirements capture, design review, and task decomposition. The repository is treated as a governed system where the constitution, specs, plans, and code evolve together and remain versioned.
 
 ### II. Agent Safety Over Automation Speed
-OpsPilot manages production alerts and incidents; therefore, the system must prefer safe, explainable, and reviewable behavior over autonomous action without constraints. Every tool call, external API invocation, and automation step must be bounded by clear input validation, explicit guardrails, and human oversight for actions that could affect production systems.
+IncidentArena manages production alerts and incidents; therefore, the system must prefer safe, explainable, and reviewable behavior over autonomous action without constraints. Every tool call, external API invocation, and automation step must be bounded by clear input validation, explicit guardrails, and human oversight for actions that could affect production systems.
 
 ### III. Evidence-Driven Incident Handling
 Operational decisions must be based on evidence, not guesses. Alerts, incident timelines, runbooks, tool outputs, and agent reasoning must be traceable and auditable. When a diagnosis is uncertain, the system must ask for confirmation, surface uncertainty explicitly, and avoid destructive actions until confidence is enough.
@@ -29,7 +29,7 @@ No change is considered complete unless it preserves the project contract and ke
 
 ## Operational Architecture and Constraints
 
-OpsPilot must respect the operational realities of incident workflows:
+IncidentArena must respect the operational realities of incident workflows:
 
 - Alert ingestion, enrichment, triage, and response coordination are distinct responsibilities.
 - Domain logic must not embed raw I/O or infrastructure concerns directly in business rules.

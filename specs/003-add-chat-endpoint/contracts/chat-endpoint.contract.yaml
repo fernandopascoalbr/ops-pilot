@@ -1,0 +1,77 @@
+contract: chat-endpoint
+version: 1
+description: >
+  Contrato funcional do endpoint POST /chat para execução de estratégias
+  de raciocínio com resposta estruturada, validação de entrada e timeout.
+
+endpoint:
+  method: POST
+  path: /chat
+  content_type: application/json
+
+request:
+  required_fields: [message]
+  fields:
+    message:
+      type: string
+      required: true
+      min_length: 1
+    strategy:
+      type: string
+      required: false
+      default: react
+    reflect:
+      type: boolean
+      required: false
+      default: false
+
+responses:
+  "200":
+    description: Processamento concluído com sucesso
+    body:
+      required_fields: [answer, trace, metrics]
+      fields:
+        answer:
+          type: string
+        trace:
+          type: array
+          item_schema:
+            type: object
+            required_fields: [type, message]
+        metrics:
+          type: object
+          required_fields: [llmCalls, latencyMs]
+  "400":
+    description: Corpo inválido
+    body:
+      required_fields: [issues]
+      fields:
+        issues:
+          type: array
+          description: Lista de issues de validação detalhadas
+  "422":
+    description: Estratégia desconhecida
+    body:
+      required_fields: [error]
+      fields:
+        error:
+          type: string
+  "504":
+    description: Tempo limite excedido (180 segundos)
+    body:
+      required_fields: [error]
+      fields:
+        error:
+          type: string
+
+behavioral_rules:
+  - id: BR-001
+    rule: Quando strategy não for informada, o endpoint deve usar a estratégia padrão react.
+  - id: BR-002
+    rule: Quando reflect=true, a estratégia resolvida deve ser executada com wrapper de reflexão.
+  - id: BR-003
+    rule: Estratégias não registradas no catálogo retornam 422 e não podem iniciar execução.
+  - id: BR-004
+    rule: Requisições acima de 180 segundos retornam 504 de forma determinística.
+  - id: BR-005
+    rule: Testes de integração da rota devem executar sem dependência de rede externa.
