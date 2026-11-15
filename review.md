@@ -12,6 +12,35 @@ Este arquivo consolida **o que já foi desenvolvido** no projeto, com foco em:
 
 ---
 
+## Atualização rápida (2026-11-15)
+
+Desde a versão revisada em 2026-11-14, o projeto evoluiu com a feature **008-context-usage-metrics**:
+
+- Instrumentação de contexto em `src/context/token.ts` com `estimateTokens` (chars/4).
+- Extração de `promptTokens` real (quando disponível) no fluxo das estratégias.
+- Resposta de `POST /chat` com:
+  - `metrics.promptTokens`
+  - `metrics.contextBreakdown` por fontes (`currentMessage`, `conversationHistory`, `memoryRecall`).
+- Script operacional `scripts/conversa-longa.sh` com impressão de `promptTokens` por turno.
+- Contrato de chat atualizado em `specs/003-add-chat-endpoint/contracts/chat-endpoint.contract.yaml`.
+- Suite de testes ampliada, incluindo testes unitários de token/contexto e integração de conversa longa.
+
+Validação executada nesta atualização:
+
+- `npm test` ✅ (55 testes passando)
+- `npm run typecheck` ✅
+
+Nova evolução (2026-11-15): feature **009-conversation-pruning-summary**:
+
+- janela de histórico recente reduzida para 8 mensagens no contexto ativo do chat;
+- criação da tabela `conversation_summaries` para persistência de resumo consolidado por conversa;
+- summarizing incremental em lotes: apenas quando 8 novas mensagens saem da janela;
+- resumo limitado a 150 tokens, mesclado ao resumo anterior e reinjetado no contexto;
+- evento de trace `summarize` emitido quando há compactação efetiva;
+- testes unitários e de integração cobrindo trigger por lote, não re-sumarização entre lotes incompletos e merge de resumo.
+
+---
+
 ## 1) Leitura do estado atual (`git status`)
 
 Atualizado em 2026-11-14:
@@ -185,6 +214,17 @@ Validação com Zod:
 - `answer`
 - `trace`
 - `metrics`
+
+### Summarizing de histórico no fluxo HTTP
+
+O `POST /chat` agora inclui compactação incremental de histórico para evitar crescimento indefinido de contexto:
+
+- mantém a janela ativa de 8 mensagens recentes;
+- processa mensagens deslocadas em lotes completos de 8;
+- gera resumo telegráfico até 150 tokens (com foco em decisões/fatos/incidentes/pendências);
+- mescla com resumo anterior da conversa e persiste em `conversation_summaries`;
+- injeta o resumo consolidado no contexto antes da execução da estratégia;
+- adiciona evento `summarize` ao `trace` quando houve atualização de resumo.
 
 ### Erros de domínio/execução
 

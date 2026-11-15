@@ -6,6 +6,13 @@ export type ConversationMessage = {
   createdAt: string;
 };
 
+export type ConversationSummary = {
+  conversationId: string;
+  summaryText: string;
+  summarizedMessageCount: number;
+  updatedAt: string;
+};
+
 export class ConversationNotFoundError extends Error {
   readonly conversationId: string;
 
@@ -20,4 +27,7 @@ export interface ConversationStore {
   create(): string;
   append(conversationId: string, role: ConversationRole, content: string): void;
   lastMessages(conversationId: string, limit: number): ConversationMessage[];
+  listMessages(conversationId: string): ConversationMessage[];
+  readSummary(conversationId: string): ConversationSummary | null;
+  upsertSummary(conversationId: string, summaryText: string, summarizedMessageCount: number): ConversationSummary;
 }

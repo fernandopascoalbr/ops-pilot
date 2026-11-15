@@ -4,6 +4,7 @@ import { createModel } from './model.js';
 import { createTraceEvent, countAiMessages, lastText, toTrace } from './trace.js';
 import type { ReasoningStrategy, StrategyRunResult } from '../domain/strategy.js';
 import { opsTools } from './tools.js';
+import { createPromptTokensCollector, extractPromptTokensFromMessages } from '../context/token.js';
 
 function fallbackReactAnswer(input: string): { answer: string; trace: ReturnType<typeof createReactTrace> } {
   const alerts = listAlerts('firing');
@@ -29,6 +30,7 @@ export const reactStrategy: ReasoningStrategy = {
   name: 'react',
   async run(input: string, maxIterations = 12): Promise<StrategyRunResult> {
     const started = Date.now();
+    const promptTokensCollector = createPromptTokensCollector();
 
     try {
       const agent = createReactAgent({
@@ -42,12 +44,14 @@ export const reactStrategy: ReasoningStrategy = {
         },
         {
           recursionLimit: maxIterations,
+          callbacks: [promptTokensCollector.callback],
         },
       );
 
       const messages = result?.messages ?? [];
       const trace = createReactTrace(messages);
       const answer = lastText(messages);
+      const promptTokens = promptTokensCollector.getPromptTokens() ?? extractPromptTokensFromMessages(messages);
 
       return {
         answer,
@@ -56,6 +60,7 @@ export const reactStrategy: ReasoningStrategy = {
           llmCalls: countAiMessages(messages),
           latencyMs: Date.now() - started,
           interactionLimit: maxIterations,
+          promptTokens,
         },
       };
     } catch (error) {
@@ -67,6 +72,7 @@ export const reactStrategy: ReasoningStrategy = {
           llmCalls: 1,
           latencyMs: Date.now() - started,
           interactionLimit: maxIterations,
+          promptTokens: null,
         },
       };
     }

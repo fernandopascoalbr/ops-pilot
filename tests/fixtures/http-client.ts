@@ -2,12 +2,10 @@ import { once } from 'node:events';
 import { SqliteConversationStore } from '../../src/chat/sqlite-conversation-store.js';
 import { createServer, type ChatServerOptions } from '../../src/http/server.js';
 
-export async function requestJson(
-  path: string,
-  method: string,
-  body: Record<string, unknown> | undefined,
-  options: ChatServerOptions = {},
-): Promise<{ status: number; body: any }> {
+export async function startTestServer(options: ChatServerOptions = {}): Promise<{
+  baseUrl: string;
+  close: () => Promise<void>;
+}> {
   const server = createServer({
     ...options,
     conversationStore: options.conversationStore ?? new SqliteConversationStore(':memory:'),
@@ -21,8 +19,25 @@ export async function requestJson(
     throw new Error('Unable to resolve test server address');
   }
 
+  return {
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    close: async () => {
+      server.close();
+      await once(server, 'close');
+    },
+  };
+}
+
+export async function requestJson(
+  path: string,
+  method: string,
+  body: Record<string, unknown> | undefined,
+  options: ChatServerOptions = {},
+): Promise<{ status: number; body: any }> {
+  const server = await startTestServer(options);
+
   try {
-    const response = await fetch(`http://127.0.0.1:${address.port}${path}`, {
+    const response = await fetch(`${server.baseUrl}${path}`, {
       method,
       headers: {
         'content-type': 'application/json',
@@ -35,8 +50,7 @@ export async function requestJson(
       body: json,
     };
   } finally {
-    server.close();
-    await once(server, 'close');
+    await server.close();
   }
 }
 

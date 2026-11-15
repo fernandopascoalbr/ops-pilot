@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import type { Callbacks } from '@langchain/core/callbacks/manager';
 import { createModel } from './model.js';
 import { listAlerts, openIncident, resolveIncident, store } from './ops-store.js';
 import { createTraceEvent } from './trace.js';
 import type { ReasoningStrategy, StrategyRunResult } from '../domain/strategy.js';
+import { createPromptTokensCollector } from '../context/token.js';
 
 const planSchema = z.object({
   steps: z.array(z.string()).describe('passos curtos, ordenados e executáveis com as ferramentas disponíveis'),
@@ -55,13 +57,18 @@ function fallbackPlan(input: string): string[] {
   return steps.slice(0, 8);
 }
 
-async function planner(input: string): Promise<string[]> {
+async function planner(
+  input: string,
+  llmCalls: { planner: number; replanner: number },
+  callbacks: Callbacks,
+): Promise<string[]> {
   try {
     const model = createModel().withStructuredOutput(planSchema);
+    llmCalls.planner += 1;
     const result = await model.invoke([
       ['system', PLANNER_PROMPT],
       ['user', JSON.stringify({ input, services: store.services, alerts: listAlerts('all') })],
-    ]);
+    ], { callbacks });
 
     if (Array.isArray(result.steps) && result.steps.length > 0) {
       return result.steps.slice(0, 8);
@@ -73,13 +80,20 @@ async function planner(input: string): Promise<string[]> {
   return fallbackPlan(input);
 }
 
-async function replanner(input: string, remaining: string[], done: string[]): Promise<{ decision: 'adjust' | 'continue' | 'end'; reasoning: string; updatedSteps?: string[] }> {
+async function replanner(
+  input: string,
+  remaining: string[],
+  done: string[],
+  llmCalls: { planner: number; replanner: number },
+  callbacks: Callbacks,
+): Promise<{ decision: 'adjust' | 'continue' | 'end'; reasoning: string; updatedSteps?: string[] }> {
   try {
     const model = createModel().withStructuredOutput(replannerSchema);
+    llmCalls.replanner += 1;
     const result = await model.invoke([
       ['system', REPLANNER_PROMPT],
       ['user', JSON.stringify({ input, remaining, done })],
-    ]);
+    ], { callbacks });
 
     if (result.decision) {
       return {
@@ -174,8 +188,9 @@ export const planAndExecuteStrategy: ReasoningStrategy = {
     const trace = [createTraceEvent('thought', `Planejando resposta para: ${input}`)];
     const limit = Math.min(Math.max(1, maxIterations), 8);
     const llmCalls = { planner: 0, replanner: 0 };
+    const promptTokensCollector = createPromptTokensCollector();
 
-    let steps = await planner(input);
+    let steps = await planner(input, llmCalls, [promptTokensCollector.callback]);
     let remaining = steps.slice(0, limit);
     const done: string[] = [];
     let stepsUsed = 0;
@@ -195,7 +210,7 @@ export const planAndExecuteStrategy: ReasoningStrategy = {
       trace.push(createTraceEvent('action', `Ação executada para o passo`, { tool: execution.tool, args: execution.args }));
       trace.push(createTraceEvent('observation', execution.summary));
 
-      const decision = await replanner(input, remaining, done);
+      const decision = await replanner(input, remaining, done, llmCalls, [promptTokensCollector.callback]);
       trace.push(createTraceEvent('critique', `${decision.decision.toUpperCase()}: ${decision.reasoning}`));
 
       if (decision.decision === 'adjust') {
@@ -221,6 +236,7 @@ export const planAndExecuteStrategy: ReasoningStrategy = {
         latencyMs: Date.now() - started,
         interactionLimit: limit,
         stepsUsed,
+        promptTokens: promptTokensCollector.getPromptTokens(),
       },
     };
   },

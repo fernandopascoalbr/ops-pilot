@@ -1,0 +1,77 @@
+contract: chat-pruning-summary
+version: 1
+description: >
+  Extensão comportamental do POST /chat para pruning de histórico com sumarização
+  incremental persistida, gatilho em lotes de 8 mensagens deslocadas e evento summarize.
+
+endpoint:
+  method: POST
+  path: /chat
+  content_type: application/json
+
+request:
+  required_fields: [message]
+  fields:
+    message:
+      type: string
+      required: true
+    strategy:
+      type: string
+      required: false
+    reflect:
+      type: boolean
+      required: false
+    conversationId:
+      type: string
+      required: false
+    userId:
+      type: string
+      required: false
+
+responses:
+  "200":
+    description: Chat processado com contexto composto incluindo resumo persistido quando existir
+    body:
+      required_fields: [conversationId, answer, trace, metrics]
+      fields:
+        trace:
+          type: array
+          item_schema:
+            type: object
+            required_fields: [type, message]
+            fields:
+              type:
+                type: string
+                allowed_values: [thought, action, observation, plan, critique, answer, summarize]
+  "400":
+    description: Corpo inválido
+  "404":
+    description: Conversa não encontrada
+  "422":
+    description: Estratégia desconhecida
+  "504":
+    description: Timeout de processamento
+
+persistence:
+  table: conversation_summaries
+  required_fields: [conversation_id, summary_text, summarized_message_count, updated_at]
+  uniqueness:
+    - conversation_id
+
+behavioral_rules:
+  - id: BR-PS-001
+    rule: A janela ativa mantém apenas as 8 mensagens mais recentes em forma completa para composição de histórico.
+  - id: BR-PS-002
+    rule: A sumarização só pode rodar quando 8 novas mensagens saírem da janela ativa desde a última sumarização.
+  - id: BR-PS-003
+    rule: Cada resumo incremental deve ter no máximo 150 tokens.
+  - id: BR-PS-004
+    rule: O resumo incremental deve ser mesclado ao resumo anterior e persistido como novo estado consolidado da conversa.
+  - id: BR-PS-005
+    rule: Quando não houver novo lote completo de 8 mensagens deslocadas, o resumo persistido não pode ser regenerado.
+  - id: BR-PS-006
+    rule: Em toda sumarização efetiva, deve existir um evento trace com type=summarize no turno correspondente.
+  - id: BR-PS-007
+    rule: O resumo persistido deve entrar no contexto do processamento de chat quando disponível.
+  - id: BR-PS-008
+    rule: O comportamento de lote e persistência deve ser validado por pelo menos um teste automatizado com estratégia fake determinística.

@@ -4,7 +4,20 @@ import { createDeterministicStrategy } from '../fixtures/fake-strategies.js';
 import { postChat } from '../fixtures/http-client.js';
 
 const fakeRegistry = {
-  react: createDeterministicStrategy('react', 'default strategy answer'),
+  react: {
+    name: 'react',
+    async run(input: string) {
+      return {
+        answer: `default strategy answer: ${input}`,
+        trace: [],
+        metrics: {
+          llmCalls: 1,
+          latencyMs: 1,
+          promptTokens: 21,
+        },
+      };
+    },
+  },
   deterministic: createDeterministicStrategy('deterministic', 'explicit strategy answer'),
 };
 
@@ -20,6 +33,7 @@ test('POST /chat returns 200 with answer, trace, metrics using default strategy'
   assert.ok(Array.isArray(response.body.trace));
   assert.equal(typeof response.body.metrics, 'object');
   assert.equal(typeof response.body.metrics.historyMessages, 'number');
+  assert.equal(response.body.metrics.promptTokens, 21);
 });
 
 test('POST /chat returns 200 when explicit known strategy is provided', async () => {
@@ -32,4 +46,5 @@ test('POST /chat returns 200 when explicit known strategy is provided', async ()
   assert.equal(typeof response.body.conversationId, 'string');
   assert.match(response.body.answer, /explicit strategy answer/);
   assert.equal(typeof response.body.metrics.historyMessages, 'number');
+  assert.equal(response.body.metrics.promptTokens, null);
 });

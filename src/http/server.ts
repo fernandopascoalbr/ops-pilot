@@ -1,7 +1,17 @@
 import { createServer as createNodeServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { z } from 'zod';
+import { createTraceEvent } from '../agents/trace.js';
 import { UnknownStrategyError, defaultStrategyRegistry, resolveStrategy, type StrategyRegistry } from '../agents/index.js';
-import { ConversationNotFoundError, type ConversationMessage, type ConversationStore, SqliteConversationStore } from '../chat/index.js';
+import {
+  ConversationNotFoundError,
+  RECENT_WINDOW_MESSAGES,
+  selectDisplacedBatch,
+  summarizeDisplacedMessages,
+  type ConversationMessage,
+  type ConversationStore,
+  SqliteConversationStore,
+} from '../chat/index.js';
+import { buildContextBreakdown, type ContextBreakdown } from '../context/token.js';
 import { LearningReflector, MemoryStore, type MemoryRecord } from '../memory/index.js';
 import { chatRequestSchema } from './chat-schema.js';
 
@@ -32,7 +42,10 @@ type ChatResultBody = {
   conversationId: string;
   answer: string;
   trace: unknown[];
-  metrics: Record<string, unknown>;
+  metrics: Record<string, unknown> & {
+    promptTokens: number | null;
+    contextBreakdown: ContextBreakdown;
+  };
 };
 
 export type ChatHttpResponse =
@@ -79,25 +92,47 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
   }
 }
 
-function composeMessageWithHistory(message: string, history: ConversationMessage[], memories: MemoryRecord[] = []): string {
+function composeMessageWithHistory(
+  message: string,
+  history: ConversationMessage[],
+  memories: MemoryRecord[] = [],
+  persistedSummary: string | null = null,
+): { input: string; contextBreakdown: ContextBreakdown } {
   const sections: string[] = [];
 
-  if (memories.length > 0) {
-    const memoryText = memories
-      .map((memory) => `- ${memory.fact}`)
-      .join('\n');
-    sections.push(`Memórias relevantes do usuário:\n${memoryText}`);
+  const memoryText = memories
+    .map((memory) => `- ${memory.fact}`)
+    .join('\n');
+  const memorySection = memoryText.length > 0 ? `Memórias relevantes do usuário:\n${memoryText}` : '';
+  if (memorySection.length > 0) {
+    sections.push(memorySection);
   }
 
-  if (history.length > 0) {
-    const historyText = history
-      .map((entry) => `${entry.role}: ${entry.content}`)
-      .join('\n');
-    sections.push(`Histórico recente da conversa:\n${historyText}`);
+  const historyText = history
+    .map((entry) => `${entry.role}: ${entry.content}`)
+    .join('\n');
+  const summarySection = persistedSummary && persistedSummary.trim().length > 0
+    ? `Resumo consolidado da conversa:\n${persistedSummary}`
+    : '';
+  const historySectionParts = [
+    summarySection,
+    historyText.length > 0 ? `Histórico recente da conversa:\n${historyText}` : '',
+  ].filter((section) => section.length > 0);
+  const historySection = historySectionParts.join('\n\n');
+  if (historySection.length > 0) {
+    sections.push(historySection);
   }
 
-  sections.push(`Mensagem atual:\n${message}`);
-  return sections.join('\n\n');
+  const currentMessageSection = `Mensagem atual:\n${message}`;
+  sections.push(currentMessageSection);
+  return {
+    input: sections.join('\n\n'),
+    contextBreakdown: buildContextBreakdown([
+      { source: 'currentMessage', text: currentMessageSection },
+      { source: 'conversationHistory', text: historySection },
+      { source: 'memoryRecall', text: memorySection },
+    ]),
+  };
 }
 
 export async function processChatRequest(body: unknown, options: ChatServerOptions = {}): Promise<ChatHttpResponse> {
@@ -131,15 +166,43 @@ export async function processChatRequest(body: unknown, options: ChatServerOptio
 
   try {
     const conversationId = parsed.data.conversationId ?? conversationStore.create();
-    const history = conversationStore.lastMessages(conversationId, 12);
+    const allMessages = conversationStore.listMessages(conversationId);
+    const previousSummary = conversationStore.readSummary(conversationId);
+    const displacedBatch = selectDisplacedBatch(allMessages, previousSummary?.summarizedMessageCount ?? 0);
+    let activeSummary = previousSummary?.summaryText ?? null;
+    const summarizeTrace = displacedBatch.batchSize > 0
+      ? createTraceEvent(
+        'summarize',
+        `Resumo incremental atualizado com ${displacedBatch.batchSize} mensagens deslocadas.`,
+        {
+          args: {
+            conversationId,
+            batchSize: displacedBatch.batchSize,
+            summarizedMessageCount: displacedBatch.summarizedMessageCount,
+          },
+        },
+      )
+      : null;
+
+    if (displacedBatch.batchSize > 0) {
+      const mergedSummary = summarizeDisplacedMessages(displacedBatch.messages, activeSummary ?? '');
+      const persistedSummary = conversationStore.upsertSummary(
+        conversationId,
+        mergedSummary,
+        displacedBatch.summarizedMessageCount,
+      );
+      activeSummary = persistedSummary.summaryText;
+    }
+
+    const history = conversationStore.lastMessages(conversationId, RECENT_WINDOW_MESSAGES);
     const relevantMemories = parsed.data.userId
       ? await memoryStore.recall(parsed.data.userId, parsed.data.message, 3, 0.3)
       : [];
     const strategy = resolveStrategy(parsed.data.strategy, { reflect: parsed.data.reflect, registry });
     conversationStore.append(conversationId, 'user', parsed.data.message);
 
-    const composedInput = composeMessageWithHistory(parsed.data.message, history, relevantMemories);
-    const result = await withTimeout(strategy.run(composedInput, maxIterations), timeoutMs);
+    const composedContext = composeMessageWithHistory(parsed.data.message, history, relevantMemories, activeSummary);
+    const result = await withTimeout(strategy.run(composedContext.input, maxIterations), timeoutMs);
     conversationStore.append(conversationId, 'assistant', result.answer);
     if (parsed.data.userId) {
       learningReflector.reflectAndRememberAsync({
@@ -153,11 +216,13 @@ export async function processChatRequest(body: unknown, options: ChatServerOptio
       body: {
         conversationId,
         answer: result.answer,
-        trace: result.trace,
+        trace: summarizeTrace ? [summarizeTrace, ...result.trace] : result.trace,
         metrics: {
           ...result.metrics,
           historyMessages: history.length,
           memoryRecallCount: relevantMemories.length,
+          promptTokens: typeof result.metrics.promptTokens === 'number' ? result.metrics.promptTokens : null,
+          contextBreakdown: composedContext.contextBreakdown,
         },
       },
     };

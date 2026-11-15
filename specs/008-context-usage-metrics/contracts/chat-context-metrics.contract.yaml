@@ -1,0 +1,82 @@
+contract: chat-context-metrics
+version: 1
+description: >
+  Extensão do contrato do POST /chat para expor métricas de uso real de prompt tokens
+  e detalhamento estimado de contexto por fonte.
+
+endpoint:
+  method: POST
+  path: /chat
+  content_type: application/json
+
+request:
+  required_fields: [message]
+  fields:
+    message:
+      type: string
+      required: true
+    strategy:
+      type: string
+      required: false
+    reflect:
+      type: boolean
+      required: false
+    conversationId:
+      type: string
+      required: false
+    userId:
+      type: string
+      required: false
+
+responses:
+  "200":
+    description: Resposta de chat com métricas instrumentadas
+    body:
+      required_fields: [conversationId, answer, trace, metrics]
+      fields:
+        metrics:
+          type: object
+          required_fields: [llmCalls, latencyMs, historyMessages, memoryRecallCount, promptTokens, contextBreakdown]
+          fields:
+            promptTokens:
+              type: integer_or_null
+              description: Uso real de prompt tokens no turno; null quando indisponível
+            contextBreakdown:
+              type: object
+              required_fields: [totalEstimatedTokens, items]
+              fields:
+                totalEstimatedTokens:
+                  type: integer
+                items:
+                  type: array
+                  item_schema:
+                    type: object
+                    required_fields: [source, chars, estimatedTokens]
+                    fields:
+                      source:
+                        type: string
+                        allowed_values: [currentMessage, conversationHistory, memoryRecall]
+                      chars:
+                        type: integer
+                      estimatedTokens:
+                        type: integer
+  "400":
+    description: Corpo inválido
+  "404":
+    description: Conversa não encontrada (quando conversationId inválido)
+  "422":
+    description: Estratégia desconhecida
+  "504":
+    description: Timeout de processamento
+
+behavioral_rules:
+  - id: BR-CM-001
+    rule: O cálculo de estimatedTokens deve seguir chars/4 para cada item do contextBreakdown.
+  - id: BR-CM-002
+    rule: totalEstimatedTokens deve ser igual à soma de estimatedTokens de todos os itens.
+  - id: BR-CM-003
+    rule: promptTokens deve refletir uso real retornado pelo runtime quando disponível; caso contrário, deve ser null.
+  - id: BR-CM-004
+    rule: Ausência de promptTokens real não pode alterar status de sucesso do /chat.
+  - id: BR-CM-005
+    rule: scripts/conversa-longa.sh deve conseguir ler promptTokens da resposta e imprimir por turno.

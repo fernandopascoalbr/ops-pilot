@@ -16,6 +16,7 @@ Núcleo de raciocínio para **triagem operacional de alertas e incidentes**, com
 - [Dados e store](#dados-e-store)
 - [Arena (CLI)](#arena-cli)
 - [API HTTP](#api-http)
+- [Pruning e summarizing incremental](#pruning-e-summarizing-incremental)
 - [Trace e métricas](#trace-e-métricas)
 - [Testes](#testes)
 - [Estrutura do projeto](#estrutura-do-projeto)
@@ -91,6 +92,7 @@ Fixos: `baseURL = https://openrouter.ai/api/v1` e `temperature = 0`.
 | `npm run seed` | Restaura o seed (5 serviços, 6 alertas, 0 incidentes) |
 | `npm run mcp` | Sobe o servidor MCP `opspilot` via stdio |
 | `npm test` | Roda a suíte de testes (`node:test`) |
+| `bash scripts/conversa-longa.sh` | Executa conversa multi-turno e imprime `promptTokens` por turno |
 
 ## Estratégias de raciocínio
 
@@ -193,6 +195,28 @@ curl -X POST http://localhost:3000/chat \
 
 Limites: corpo máximo de 1 MB e `maxIterations` padrão 8 por requisição.
 
+## Pruning e summarizing incremental
+
+Para conversas longas, o `POST /chat` aplica compactação incremental de histórico:
+
+- mantém apenas as **8 mensagens mais recentes** como janela ativa;
+- o que sai dessa janela é processado em **lotes de 8 mensagens deslocadas**;
+- cada lote gera um resumo telegráfico de até **150 tokens**;
+- o novo resumo é **mesclado** ao resumo anterior e persistido em `conversation_summaries`;
+- o resumo **não é refeito a cada request**: só roda quando sai um novo lote completo de 8;
+- sempre que houver sumarização efetiva, o trace recebe evento `summarize`.
+
+A orientação de sumarização está definida em `SUMMARIZER_PROMPT` ([src/chat/conversation-summary.ts](src/chat/conversation-summary.ts)), priorizando decisões, fatos, incidentes abertos/resolvidos e pendências.
+
+### Métricas de contexto no `POST /chat`
+
+No status `200`, o objeto `metrics` também inclui:
+
+- `promptTokens`: consumo real de tokens de prompt reportado pelo runtime (ou `null` quando indisponível)
+- `contextBreakdown`: composição estimada de contexto por fonte, com:
+  - `items[]` (`source`, `chars`, `estimatedTokens`) para `currentMessage`, `conversationHistory`, `memoryRecall`
+  - `totalEstimatedTokens` como soma consistente das fontes
+
 ### Memória semântica e filtro de relevância
 
 Quando `userId` é enviado, o `/chat` pode injetar memórias semânticas relevantes antes da execução da estratégia.
@@ -236,7 +260,7 @@ Cada execução devolve uma trilha auditável de eventos tipados:
 
 ```ts
 type TraceEvent = {
-  type: 'thought' | 'action' | 'observation' | 'plan' | 'critique' | 'answer';
+  type: 'thought' | 'action' | 'observation' | 'plan' | 'critique' | 'answer' | 'summarize';
   message: string;
   tool?: string;                  // em eventos 'action'
   args?: Record<string, unknown>;
@@ -248,6 +272,7 @@ type StrategyMetrics = {
   latencyMs: number;
   interactionLimit?: number;
   stepsUsed?: number;
+  promptTokens?: number | null;
 };
 ```
 

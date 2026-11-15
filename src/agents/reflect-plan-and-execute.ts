@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import type { Callbacks } from '@langchain/core/callbacks/manager';
 import { createModel } from './model.js';
 import { listAlerts, openIncident, resolveIncident, store } from './ops-store.js';
 import { clampIterationLimit, createTraceEvent, shouldStopByPolicy } from './trace.js';
 import type { ReasoningStrategy, StrategyRunResult } from '../domain/strategy.js';
 import type { ReflectionDecision, StoppingPolicy } from './types.js';
+import { createPromptTokensCollector } from '../context/token.js';
 
 const planSchema = z.object({
   steps: z.array(z.string()).min(1).max(8),
@@ -51,14 +53,18 @@ function fallbackPlan(input: string): string[] {
   return steps.slice(0, 8);
 }
 
-async function planner(input: string, llmCalls: { value: number }): Promise<string[]> {
+async function planner(
+  input: string,
+  llmCalls: { value: number },
+  callbacks: Callbacks,
+): Promise<string[]> {
   try {
     const model = createModel().withStructuredOutput(planSchema);
     llmCalls.value += 1;
     const result = await model.invoke([
       ['system', PLANNER_PROMPT],
       ['user', JSON.stringify({ input, alerts: listAlerts('all'), services: store.services })],
-    ]);
+    ], { callbacks });
     return result.steps.slice(0, 8);
   } catch {
     return fallbackPlan(input);
@@ -120,6 +126,7 @@ async function reflect(
   summary: string,
   stepsUsed: number,
   llmCalls: { value: number },
+  callbacks: Callbacks,
 ): Promise<ReflectionResult> {
   try {
     const model = createModel().withStructuredOutput(reflectionSchema);
@@ -127,7 +134,7 @@ async function reflect(
     const result = await model.invoke([
       ['system', REFLECT_PROMPT],
       ['user', JSON.stringify({ input, remaining, summary, stepsUsed })],
-    ]);
+    ], { callbacks });
     return {
       confidence: result.confidence ?? 'low',
       decision: result.decision,
@@ -190,10 +197,11 @@ export const reflectPlanAndExecuteStrategy: ReasoningStrategy = {
   async run(input: string, maxIterations = DEFAULT_POLICY.maxIterations): Promise<StrategyRunResult> {
     const started = Date.now();
     const llmCalls = { value: 0 };
+    const promptTokensCollector = createPromptTokensCollector();
     const effectiveLimit = clampIterationLimit(maxIterations, DEFAULT_POLICY.maxIterations, 8);
     const trace = [createTraceEvent('thought', `Iniciando reflect plan-and-execute para: ${input}`)];
 
-    let remaining = await planner(input, llmCalls);
+    let remaining = await planner(input, llmCalls, [promptTokensCollector.callback]);
     if (remaining.length === 0) {
       remaining = fallbackPlan(input);
     }
@@ -230,7 +238,14 @@ export const reflectPlanAndExecuteStrategy: ReasoningStrategy = {
       trace.push(createTraceEvent('action', 'Executando passo do plano', { tool: execution.tool, args: execution.args }));
       trace.push(createTraceEvent('observation', execution.summary));
 
-      const reflection = await reflect(input, remaining, summary, stepsUsed, llmCalls);
+      const reflection = await reflect(
+        input,
+        remaining,
+        summary,
+        stepsUsed,
+        llmCalls,
+        [promptTokensCollector.callback],
+      );
       trace.push(createTraceEvent('critique', `${reflection.decision.toUpperCase()}: ${reflection.reasoning}`));
 
       const policyCheck = shouldStopByPolicy({
@@ -277,6 +292,7 @@ export const reflectPlanAndExecuteStrategy: ReasoningStrategy = {
         latencyMs: Date.now() - started,
         interactionLimit: effectiveLimit,
         stepsUsed,
+        promptTokens: promptTokensCollector.getPromptTokens(),
       },
     };
   },

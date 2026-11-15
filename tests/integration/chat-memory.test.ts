@@ -62,6 +62,16 @@ test('POST /chat injects user-scoped memory recall into the strategy input', asy
   assert.equal(response.status, 200);
   assert.ok(response.body.answer.includes('memory-aware'));
   assert.equal(response.body.metrics.memoryRecallCount, 1);
+  assert.ok(Array.isArray(response.body.metrics.contextBreakdown.items));
+  assert.deepEqual(
+    response.body.metrics.contextBreakdown.items.map((item: { source: string }) => item.source),
+    ['currentMessage', 'conversationHistory', 'memoryRecall'],
+  );
+  assert.ok(
+    response.body.metrics.contextBreakdown.items.find((item: { source: string; chars: number }) => (
+      item.source === 'memoryRecall' && item.chars > 0
+    )),
+  );
 });
 
 test('POST /chat keeps memory isolated by user and does not leak cross-user context', async () => {
@@ -107,4 +117,11 @@ test('POST /chat keeps memory isolated by user and does not leak cross-user cont
   assert.equal(response.status, 200);
   assert.ok(response.body.answer.includes('em atraso'));
   assert.doesNotMatch(response.body.answer, /latência elevada/i);
+  assert.equal(
+    response.body.metrics.contextBreakdown.totalEstimatedTokens,
+    response.body.metrics.contextBreakdown.items.reduce(
+      (total: number, item: { estimatedTokens: number }) => total + item.estimatedTokens,
+      0,
+    ),
+  );
 });

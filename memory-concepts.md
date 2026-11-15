@@ -1,13 +1,30 @@
 # Conceitos de Memória em Agentes de IA
 
 > Complemento ao [review.md](./review.md) com foco em **memória de agentes**.  
-> O projeto atual não implementa nenhuma dessas camadas; este documento serve de guia para adicioná-las.
+> O projeto já implementa parte dessas camadas (memória de conversa, memória semântica, refletor e esquecimento); este documento continua como guia conceitual e de evolução.
+
+---
+
+## Atualização de implementação (2026-11-15)
+
+Status atual no OpsPilot:
+
+- **Memória episódica de conversa**: implementada via `conversationId` no `POST /chat`, com histórico recente injetado no contexto.
+- **Memória semântica por usuário**: implementada via `userId` + recall por similaridade no fluxo do chat.
+- **Refletor de aprendizado assíncrono**: implementado após resposta, com filtros para conteúdo sensível e pedidos pontuais.
+- **Esquecimento explícito**: implementado via remoção de preferência por alvo (`forget_preference` e `DELETE /memories`).
+- **Medição de contexto/tokens**: `promptTokens` real (quando disponível) e `contextBreakdown` estimado por fonte no `POST /chat`.
+- **Conversa longa observável**: script `scripts/conversa-longa.sh` imprime `promptTokens` por turno.
+- **Pruning com summarizing incremental**: histórico recente limitado a 8 mensagens; lotes deslocados de 8 mensagens viram resumo de até 150 tokens, mesclado ao resumo anterior e persistido em `conversation_summaries`.
+- **Auditabilidade de compactação**: quando ocorre sumarização efetiva, o trace inclui evento `summarize`.
 
 ---
 
 ## Por que memória importa?
 
-Hoje o `POST /chat` recebe `message` + `strategy` e devolve uma resposta — sem nenhum estado entre requisições. Cada chamada começa do zero. Isso tem duas consequências práticas:
+Sem memória, o `POST /chat` operaria sem estado entre requisições. O projeto já mitigou esse problema, mas os conceitos abaixo seguem importantes para manutenção e evolução.
+
+Sem memória, haveria duas consequências práticas:
 
 - O modelo não sabe que o mesmo usuário já perguntou sobre o incidente `INC-42` há cinco minutos.
 - Se o usuário preferir ver incidentes ordenados por severidade, o agente nunca aprende isso: vai continuar listando na ordem padrão do `store`.
@@ -31,7 +48,7 @@ Requisição 2 → mensagens: [ { role: "user", content: "Liste os alertas." },
 
 O modelo "lembra" porque as mensagens anteriores estão literalmente no prompt. Sem isso, a segunda pergunta não tem contexto.
 
-**No OpsPilot:** o `POST /chat` receberia também um `sessionId`; um `SessionStore` guardaria o histórico por sessão e o injetaria na chamada ao LLM.
+**No OpsPilot (implementado):** o `POST /chat` já recebe `conversationId`; o `ConversationStore` guarda histórico por conversa e injeta na chamada ao modelo.
 
 **Limitação:** o contexto cresce sem parar. Para conversas longas, é necessário comprimir ou truncar (ver seção 5).
 
@@ -71,7 +88,7 @@ O modelo "lembra" porque as mensagens anteriores estão literalmente no prompt. 
 5. injeta apenas esses K fatos no prompt
 ```
 
-**No OpsPilot:** se o usuário escrever "liste os incidentes", o sistema recupera automaticamente o fato "prefere ordenado por severidade DESC" porque os embeddings são próximos — sem precisar que o usuário repita a preferência.
+**No OpsPilot (implementado):** se o usuário escrever "liste os incidentes", o sistema pode recuperar automaticamente um fato de preferência já aprendido, sem exigir repetição explícita.
 
 **Custo:** requer infraestrutura extra (banco vetorial + modelo de embedding). Para poucos usuários, um simples array em SQLite com busca por palavras-chave pode ser suficiente.
 
@@ -97,7 +114,7 @@ O modelo "lembra" porque as mensagens anteriores estão literalmente no prompt. 
 - **Frase durável:** o refletor deve gerar fatos que façam sentido fora de contexto. `"usuário prefere severidade DESC"` é durável; `"o usuário perguntou isso agora"` não é.
 - **Idempotente:** re-executar o refletor sobre a mesma conversa não deve duplicar fatos.
 
-**No OpsPilot:** o `withReflection` atual já é uma estrutura análoga — executa algo extra ao final de cada passo. O refletor de aprendizado seria uma segunda dimensão: enquanto o `reflect-plan-and-execute` reflete *sobre a qualidade do raciocínio*, o refletor de aprendizado reflete *sobre o que saber do usuário*.
+**No OpsPilot (implementado):** o refletor de aprendizado já atua como segunda dimensão em paralelo à reflexão de estratégia: uma camada reflete *sobre o raciocínio operacional*, a outra reflete *sobre o que vale lembrar do usuário*.
 
 ---
 
@@ -115,7 +132,22 @@ O modelo "lembra" porque as mensagens anteriores estão literalmente no prompt. 
 | **Sumarização deslizante** | comprime N mensagens antigas em um único resumo e mantém as N recentes inteiras |
 | **Retrieval seletivo** | em vez de enviar todas as mensagens, usa embedding para recuperar apenas as relevantes para a pergunta atual |
 
-**No OpsPilot:** a sumarização deslizante seria o caminho mais simples. Um middleware no servidor verificaria o tamanho do histórico e, se ultrapassar `MAX_TOKENS`, chamaria o LLM uma vez só para gerar um resumo das mensagens antigas antes de prosseguir.
+**No OpsPilot (implementado):** a compactação usa uma estratégia incremental por lotes:
+
+1. mantém-se uma janela ativa com as 8 mensagens mais recentes em forma completa;
+2. quando 8 novas mensagens saem dessa janela, esse lote deslocado é sumarizado;
+3. o novo resumo é mesclado ao resumo anterior da conversa e persistido;
+4. o resumo consolidado entra no contexto da próxima execução;
+5. não há re-sumarização entre lotes incompletos.
+
+### Prompt de summarizing (atual)
+
+O comportamento é orientado por um prompt fixo (telegráfico) em `SUMMARIZER_PROMPT`:
+
+- limite explícito de 150 tokens;
+- preservação obrigatória de decisões, fatos (nomes/datas/prazos/preferências), incidentes abertos/resolvidos e pendências;
+- descarte de conversa social;
+- incorporação do resumo anterior quando existir.
 
 ---
 
@@ -206,13 +238,12 @@ A query de fatos sempre filtra `deletedAt IS NULL AND (expiresAt IS NULL OR expi
 
 ---
 
-## 10. Próximos passos para implementar memória no OpsPilot
+## 10. Próximos passos para evoluir memória no OpsPilot
 
 Ordem sugerida de complexidade crescente:
 
-1. **Histórico de sessão** (episódica básica): adicionar `sessionId` ao `POST /chat` e um `SessionStore` em SQLite.
-2. **Injeção no prompt**: enviar as últimas N mensagens da sessão junto com a nova mensagem do usuário.
-3. **Refletor de aprendizado**: chamada assíncrona pós-resposta que extrai fatos e os salva.
-4. **Esquecimento**: endpoint `DELETE /sessions/:id/facts/:factId` + expiração automática.
-5. **Sumarização deslizante**: middleware que comprime histórico antigo antes de enviar ao LLM.
-6. **Busca semântica**: só quando o volume de fatos por usuário tornar a injeção direta inviável.
+1. **Sumarização deslizante**: comprimir histórico antigo quando o contexto crescer além do ideal.
+2. **Política de retenção/TTL**: expiração automática de memórias desatualizadas.
+3. **Memória operacional estruturada**: fatos de incidente/runbook além de preferências de usuário.
+4. **Calibração de recall**: ajustar thresholds e K com base em qualidade/custo.
+5. **Observabilidade avançada**: dashboards de evolução de `promptTokens` e composição de contexto por fonte.

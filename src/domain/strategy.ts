@@ -1,4 +1,4 @@
-export type TraceEventType = 'thought' | 'action' | 'observation' | 'plan' | 'critique' | 'answer';
+export type TraceEventType = 'thought' | 'action' | 'observation' | 'plan' | 'critique' | 'answer' | 'summarize';
 
 export type TraceEvent = {
   type: TraceEventType;
@@ -13,6 +13,7 @@ export type StrategyMetrics = {
   latencyMs: number;
   interactionLimit?: number;
   stepsUsed?: number;
+  promptTokens?: number | null;
 };
 
 export type StrategyRunResult = {

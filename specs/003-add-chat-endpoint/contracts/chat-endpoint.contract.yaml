@@ -40,7 +40,30 @@ responses:
             required_fields: [type, message]
         metrics:
           type: object
-          required_fields: [llmCalls, latencyMs]
+          required_fields: [llmCalls, latencyMs, historyMessages, memoryRecallCount, promptTokens, contextBreakdown]
+          fields:
+            promptTokens:
+              type: integer_or_null
+              description: Tokens reais de prompt reportados pelo runtime do modelo; null quando indisponível
+            contextBreakdown:
+              type: object
+              required_fields: [totalEstimatedTokens, items]
+              fields:
+                totalEstimatedTokens:
+                  type: integer
+                items:
+                  type: array
+                  item_schema:
+                    type: object
+                    required_fields: [source, chars, estimatedTokens]
+                    fields:
+                      source:
+                        type: string
+                        allowed_values: [currentMessage, conversationHistory, memoryRecall]
+                      chars:
+                        type: integer
+                      estimatedTokens:
+                        type: integer
   "400":
     description: Corpo inválido
     body:
@@ -75,3 +98,7 @@ behavioral_rules:
     rule: Requisições acima de 180 segundos retornam 504 de forma determinística.
   - id: BR-005
     rule: Testes de integração da rota devem executar sem dependência de rede externa.
+  - id: BR-006
+    rule: A estimativa de tokens no contextBreakdown segue chars/4 por fonte.
+  - id: BR-007
+    rule: Ausência de promptTokens real não altera status 200 de respostas bem-sucedidas.
