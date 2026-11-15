@@ -3,11 +3,14 @@ import type { TraceEvent, TraceEventType } from '../domain/strategy.js';
 export function createTraceEvent(
   type: TraceEventType,
   message: string,
-  options: { tool?: string; args?: Record<string, unknown> } = {},
+  options: { tool?: string; args?: Record<string, unknown>; node?: string; route?: string; reason?: string } = {},
 ): TraceEvent {
   return {
     type,
     message,
+    node: options.node ?? 'runtime',
+    route: options.route,
+    reason: options.reason,
     tool: options.tool,
     args: options.args,
     timestamp: new Date().toISOString(),
@@ -18,8 +21,10 @@ export function formatTrace(trace: TraceEvent[]): string {
   return trace
     .map((event) => {
       const toolSuffix = event.tool ? ` :: ${event.tool}` : '';
+      const routeSuffix = event.route ? ` :: route=${event.route}` : '';
+      const reasonSuffix = event.reason ? ` :: ${event.reason}` : '';
       const argsSuffix = event.args && Object.keys(event.args).length > 0 ? ` :: ${JSON.stringify(event.args)}` : '';
-      return `[${event.type}] ${event.message}${toolSuffix}${argsSuffix}`;
+      return `[${event.type}] ${event.message}${routeSuffix}${toolSuffix}${reasonSuffix}${argsSuffix}`;
     })
     .join('\n');
 }

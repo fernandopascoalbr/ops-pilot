@@ -1,0 +1,117 @@
+contract: chat-trace-observability
+version: 1
+description: >
+  Contrato funcional para rastreabilidade persistida de requisições de chat,
+  incluindo correlação por requestId, consulta operacional por identificador e
+  logs estruturados de eventos com metadados.
+
+endpoints:
+  - method: POST
+    path: /chat
+    content_type: application/json
+    request:
+      required_fields: [message]
+      fields:
+        message:
+          type: string
+          required: true
+          min_length: 1
+        strategy:
+          type: string
+          required: false
+        reflect:
+          type: boolean
+          required: false
+        conversationId:
+          type: string
+          required: false
+    responses:
+      "200":
+        description: Resposta de chat concluída com rastreabilidade
+        headers:
+          required_fields: [X-Request-Id]
+        body:
+          required_fields: [requestId, conversationId, answer, route, reason, trace, metrics]
+          fields:
+            requestId:
+              type: string
+              description: Deve ser igual ao header X-Request-Id
+            trace:
+              type: array
+            metrics:
+              type: object
+      "400":
+        description: Corpo inválido
+        headers:
+          required_fields: [X-Request-Id]
+        body:
+          required_fields: [requestId, error]
+      "404":
+        description: Conversa não encontrada
+        headers:
+          required_fields: [X-Request-Id]
+        body:
+          required_fields: [requestId, error]
+      "422":
+        description: Estratégia desconhecida
+        headers:
+          required_fields: [X-Request-Id]
+        body:
+          required_fields: [requestId, error]
+      "503":
+        description: Indisponibilidade de processamento
+        headers:
+          required_fields: [X-Request-Id]
+        body:
+          required_fields: [requestId, error]
+
+  - method: GET
+    path: /requests/:id
+    responses:
+      "200":
+        description: Registro e trace ordenado da requisição
+        body:
+          required_fields: [request, trace]
+          fields:
+            request:
+              type: object
+              required_fields: [requestId, status, metrics, createdAt, finishedAt]
+            trace:
+              type: array
+              description: Lista ordenada por tempo de ocorrência
+              item_schema:
+                type: object
+                required_fields: [node, payload, occurredAt]
+      "404":
+        description: Requisição não encontrada
+        body:
+          required_fields: [error]
+
+storage:
+  sqlite_tables:
+    requests:
+      description: Registro principal da requisição com métricas operacionais
+      required_fields: [request_id, status, route, route_reason, llm_calls, latency_ms, created_at, finished_at]
+    trace_events:
+      description: Eventos de trace associados à requisição
+      required_fields: [event_id, request_id, seq, node, payload, occurred_at]
+
+logging:
+  format: json-line
+  rule: Uma linha JSON por evento operacional
+  restrictions:
+    - Incluir apenas metadados permitidos para operação
+    - Não incluir payload completo de entrada/saída
+    - Sempre incluir requestId para correlação
+
+behavioral_rules:
+  - id: BR-TO-001
+    rule: O requestId retornado no body de /chat deve ser igual ao X-Request-Id do header.
+  - id: BR-TO-002
+    rule: Todo processamento de /chat deve persistir registro de requests e eventos de trace correlacionados.
+  - id: BR-TO-003
+    rule: O endpoint GET /requests/:id deve retornar o trace em ordem determinística.
+  - id: BR-TO-004
+    rule: Para requestId inexistente em GET /requests/:id, o sistema deve retornar 404 explícito.
+  - id: BR-TO-005
+    rule: Cada evento operacional deve produzir uma única linha JSON de log com metadados mínimos.

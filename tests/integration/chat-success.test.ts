@@ -30,10 +30,16 @@ test('POST /chat returns 200 with answer, trace, metrics using default strategy'
   assert.equal(response.status, 200);
   assert.equal(typeof response.body.conversationId, 'string');
   assert.equal(typeof response.body.answer, 'string');
+  assert.equal(response.body.route, 'react');
+  assert.equal(typeof response.body.reason, 'string');
+  assert.equal(response.body.metrics.route, 'react');
+  assert.equal(typeof response.body.metrics.routeReason, 'string');
   assert.ok(Array.isArray(response.body.trace));
   assert.equal(typeof response.body.metrics, 'object');
   assert.equal(typeof response.body.metrics.historyMessages, 'number');
   assert.equal(response.body.metrics.promptTokens, 21);
+  assert.equal(response.body.trace[0].node, 'roteador');
+  assert.equal(response.body.trace[0].route, 'react');
 });
 
 test('POST /chat returns 200 when explicit known strategy is provided', async () => {

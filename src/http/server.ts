@@ -1,7 +1,9 @@
 import { createServer as createNodeServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { createTraceEvent } from '../agents/trace.js';
 import { UnknownStrategyError, defaultStrategyRegistry, resolveStrategy, type StrategyRegistry } from '../agents/index.js';
+import { ModelUnavailableError } from '../agents/model.js';
 import {
   ConversationNotFoundError,
   RECENT_WINDOW_MESSAGES,
@@ -11,8 +13,12 @@ import {
   type ConversationStore,
   SqliteConversationStore,
 } from '../chat/index.js';
-import { buildContextBreakdown, type ContextBreakdown } from '../context/token.js';
+import { buildContext } from '../context/context-builder.js';
+import { type ContextBreakdown } from '../context/token.js';
 import { LearningReflector, MemoryStore, type MemoryRecord } from '../memory/index.js';
+import { routeForStrategy, routeRequest } from '../graph/production-graph.js';
+import { logObsEvent } from '../obs/logger.js';
+import { SqliteRequestTraceStore, type RequestTraceStore } from '../store/index.js';
 import { chatRequestSchema } from './chat-schema.js';
 
 const DEFAULT_TIMEOUT_MS = 180_000;
@@ -39,10 +45,15 @@ const memoryRecallQuerySchema = z.object({
 });
 
 type ChatResultBody = {
+  requestId: string;
   conversationId: string;
   answer: string;
+  route: string;
+  reason: string;
   trace: unknown[];
   metrics: Record<string, unknown> & {
+    route: string;
+    routeReason: string;
     promptTokens: number | null;
     contextBreakdown: ContextBreakdown;
   };
@@ -50,10 +61,11 @@ type ChatResultBody = {
 
 export type ChatHttpResponse =
   | { status: 200; body: ChatResultBody }
-  | { status: 400; body: { issues: z.ZodIssue[] | Array<{ code: string; message: string; path: (string | number)[] }> } }
-  | { status: 404; body: { error: string } }
-  | { status: 422; body: { error: string } }
-  | { status: 504; body: { error: string } };
+  | { status: 400; body: { requestId: string; issues: z.ZodIssue[] | Array<{ code: string; message: string; path: (string | number)[] }> } }
+  | { status: 404; body: { requestId: string; error: string } }
+  | { status: 422; body: { requestId: string; error: string } }
+  | { status: 503; body: { requestId: string; error: string } }
+  | { status: 504; body: { requestId: string; error: string } };
 
 type MemoryHttpResponse =
   | { status: 200; body: Record<string, unknown> }
@@ -67,6 +79,8 @@ export type ChatServerOptions = {
   conversationStore?: ConversationStore;
   memoryStore?: MemoryStore;
   learningReflector?: Pick<LearningReflector, 'reflectAndRememberAsync'>;
+  requestTraceStore?: RequestTraceStore;
+  requestId?: string;
 };
 
 class TimeoutError extends Error {
@@ -98,49 +112,46 @@ function composeMessageWithHistory(
   memories: MemoryRecord[] = [],
   persistedSummary: string | null = null,
 ): { input: string; contextBreakdown: ContextBreakdown } {
-  const sections: string[] = [];
+  const result = buildContext({
+    message,
+    history,
+    memories: memories.map((memory) => ({
+      id: memory.id,
+      fact: memory.fact,
+      score: memory.score,
+    })),
+    summary: persistedSummary,
+    systemPrompt: 'Você é um assistente útil e responsável que responde com clareza e segurança.',
+  });
 
-  const memoryText = memories
-    .map((memory) => `- ${memory.fact}`)
-    .join('\n');
-  const memorySection = memoryText.length > 0 ? `Memórias relevantes do usuário:\n${memoryText}` : '';
-  if (memorySection.length > 0) {
-    sections.push(memorySection);
-  }
-
-  const historyText = history
-    .map((entry) => `${entry.role}: ${entry.content}`)
-    .join('\n');
-  const summarySection = persistedSummary && persistedSummary.trim().length > 0
-    ? `Resumo consolidado da conversa:\n${persistedSummary}`
-    : '';
-  const historySectionParts = [
-    summarySection,
-    historyText.length > 0 ? `Histórico recente da conversa:\n${historyText}` : '',
-  ].filter((section) => section.length > 0);
-  const historySection = historySectionParts.join('\n\n');
-  if (historySection.length > 0) {
-    sections.push(historySection);
-  }
-
-  const currentMessageSection = `Mensagem atual:\n${message}`;
-  sections.push(currentMessageSection);
   return {
-    input: sections.join('\n\n'),
-    contextBreakdown: buildContextBreakdown([
-      { source: 'currentMessage', text: currentMessageSection },
-      { source: 'conversationHistory', text: historySection },
-      { source: 'memoryRecall', text: memorySection },
-    ]),
+    input: result.input,
+    contextBreakdown: result.contextBreakdown,
   };
 }
 
 export async function processChatRequest(body: unknown, options: ChatServerOptions = {}): Promise<ChatHttpResponse> {
+  const requestId = options.requestId ?? randomUUID();
+  const createdAt = new Date().toISOString();
   const parsed = chatRequestSchema.safeParse(body);
+  const requestTraceStore = options.requestTraceStore ?? new SqliteRequestTraceStore();
+
   if (!parsed.success) {
+    requestTraceStore.saveRequest({
+      requestId,
+      status: 'error',
+      route: 'validation',
+      routeReason: 'request body validation failed',
+      llmCalls: 0,
+      latencyMs: 0,
+      promptTokens: null,
+      modelUsed: null,
+      createdAt,
+      finishedAt: new Date().toISOString(),
+    });
     return {
       status: 400,
-      body: { issues: parsed.error.issues },
+      body: { requestId, issues: parsed.error.issues },
     };
   }
 
@@ -198,11 +209,30 @@ export async function processChatRequest(body: unknown, options: ChatServerOptio
     const relevantMemories = parsed.data.userId
       ? await memoryStore.recall(parsed.data.userId, parsed.data.message, 3, 0.3)
       : [];
-    const strategy = resolveStrategy(parsed.data.strategy, { reflect: parsed.data.reflect, registry });
+    const explicitRoute = parsed.data.strategy ? routeForStrategy(parsed.data.strategy) : await routeRequest(parsed.data.message);
+    const routeTrace = parsed.data.strategy
+      ? [createTraceEvent('route', `Rota escolhida: ${explicitRoute.route}`, {
+        node: 'roteador',
+        route: explicitRoute.route,
+        reason: explicitRoute.reason,
+        args: { source: 'explicit', strategy: parsed.data.strategy },
+      })]
+      : explicitRoute.trace;
+    const strategy = resolveStrategy(
+      parsed.data.strategy ?? explicitRoute.strategyName,
+      { reflect: parsed.data.reflect, registry },
+    );
     conversationStore.append(conversationId, 'user', parsed.data.message);
 
     const composedContext = composeMessageWithHistory(parsed.data.message, history, relevantMemories, activeSummary);
     const result = await withTimeout(strategy.run(composedContext.input, maxIterations), timeoutMs);
+    const tracedEvents = [...routeTrace, ...(summarizeTrace ? [summarizeTrace, ...result.trace] : result.trace)].map((event) => ({
+      ...event,
+      node: event.node ?? strategy.name,
+      route: event.route ?? explicitRoute.route,
+      reason: event.reason ?? explicitRoute.reason,
+    }));
+    const finishedAt = new Date().toISOString();
     conversationStore.append(conversationId, 'assistant', result.answer);
     if (parsed.data.userId) {
       learningReflector.reflectAndRememberAsync({
@@ -211,14 +241,63 @@ export async function processChatRequest(body: unknown, options: ChatServerOptio
       });
     }
 
+    requestTraceStore.saveRequest({
+      requestId,
+      status: 'success',
+      route: explicitRoute.route,
+      routeReason: explicitRoute.reason,
+      llmCalls: result.metrics.llmCalls,
+      latencyMs: result.metrics.latencyMs,
+      promptTokens: typeof result.metrics.promptTokens === 'number' ? result.metrics.promptTokens : null,
+      modelUsed: typeof result.metrics.modelUsed === 'string' ? result.metrics.modelUsed : null,
+      createdAt,
+      finishedAt,
+    });
+
+    requestTraceStore.saveTraceEvents(tracedEvents.map((event: any, index: number) => ({
+      eventId: randomUUID(),
+      requestId,
+      seq: index + 1,
+      node: typeof event.node === 'string' ? event.node : strategy.name,
+      type: typeof event.type === 'string' ? event.type : 'observation',
+      payload: {
+        tool: event.tool,
+        route: event.route,
+        reason: event.reason,
+        args: event.args,
+      },
+      occurredAt: typeof event.timestamp === 'string' ? event.timestamp : finishedAt,
+    })));
+
+    for (const event of tracedEvents as Array<Record<string, unknown>>) {
+      logObsEvent({
+        requestId,
+        node: typeof event.node === 'string' ? event.node : strategy.name,
+        eventType: typeof event.type === 'string' ? event.type : 'observation',
+        route: explicitRoute.route,
+        metadata: {
+          tool: event.tool,
+          reason: event.reason,
+        },
+      });
+    }
+
     return {
       status: 200,
       body: {
+        requestId,
         conversationId,
         answer: result.answer,
-        trace: summarizeTrace ? [summarizeTrace, ...result.trace] : result.trace,
+        route: explicitRoute.route,
+        reason: explicitRoute.reason,
+        trace: tracedEvents,
         metrics: {
           ...result.metrics,
+          modelUsed: typeof result.metrics.modelUsed === 'string' && result.metrics.modelUsed.length > 0
+            ? result.metrics.modelUsed
+            : 'unknown',
+          route: explicitRoute.route,
+          routeReason: explicitRoute.reason,
           historyMessages: history.length,
           memoryRecallCount: relevantMemories.length,
           promptTokens: typeof result.metrics.promptTokens === 'number' ? result.metrics.promptTokens : null,
@@ -227,22 +306,41 @@ export async function processChatRequest(body: unknown, options: ChatServerOptio
       },
     };
   } catch (error) {
+    requestTraceStore.saveRequest({
+      requestId,
+      status: 'error',
+      route: 'chat',
+      routeReason: 'chat execution failed',
+      llmCalls: 0,
+      latencyMs: 0,
+      promptTokens: null,
+      modelUsed: null,
+      createdAt,
+      finishedAt: new Date().toISOString(),
+    });
+
     if (error instanceof ConversationNotFoundError) {
       return {
         status: 404,
-        body: { error: error.message },
+        body: { requestId, error: error.message },
       };
     }
     if (error instanceof UnknownStrategyError) {
       return {
         status: 422,
-        body: { error: error.message },
+        body: { requestId, error: error.message },
       };
     }
     if (error instanceof TimeoutError) {
       return {
         status: 504,
-        body: { error: 'Chat processing timed out' },
+        body: { requestId, error: 'Chat processing timed out' },
+      };
+    }
+    if (error instanceof ModelUnavailableError) {
+      return {
+        status: 503,
+        body: { requestId, error: 'Model provider unavailable after retry and fallback attempts.' },
       };
     }
     throw error;
@@ -339,6 +437,25 @@ async function processForgetMemoryRequest(body: unknown, memoryStore: MemoryStor
   };
 }
 
+function processGetRequestById(requestId: string, requestTraceStore: RequestTraceStore):
+{ status: 200; body: { request: unknown; trace: unknown[] } } | { status: 404; body: { error: string } } {
+  const requestTrace = requestTraceStore.getRequestTrace(requestId);
+  if (!requestTrace) {
+    return {
+      status: 404,
+      body: { error: 'Request not found' },
+    };
+  }
+
+  return {
+    status: 200,
+    body: {
+      request: requestTrace.request,
+      trace: requestTrace.trace,
+    },
+  };
+}
+
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -364,15 +481,19 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   }
 }
 
-function sendJson(response: ServerResponse, statusCode: number, payload: unknown): void {
+function sendJson(response: ServerResponse, statusCode: number, payload: unknown, requestId?: string): void {
   response.statusCode = statusCode;
   response.setHeader('content-type', 'application/json; charset=utf-8');
+  if (requestId) {
+    response.setHeader('X-Request-Id', requestId);
+  }
   response.end(JSON.stringify(payload));
 }
 
 export function createServer(options: ChatServerOptions = {}): Server {
   const conversationStore = options.conversationStore ?? new SqliteConversationStore();
   const memoryStore = options.memoryStore ?? new MemoryStore();
+  const requestTraceStore = options.requestTraceStore ?? new SqliteRequestTraceStore();
   const learningReflector = options.learningReflector ?? new LearningReflector({
     memoryStore,
     onAudit(event) {
@@ -391,9 +512,11 @@ export function createServer(options: ChatServerOptions = {}): Server {
   return createNodeServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
     if (request.method === 'POST' && url.pathname === '/chat') {
+      const requestId = randomUUID();
       const body = await readJsonBody(request);
       if (body === Symbol.for('invalid-json-body')) {
         sendJson(response, 400, {
+          requestId,
           issues: [
             {
               code: 'custom',
@@ -401,11 +524,30 @@ export function createServer(options: ChatServerOptions = {}): Server {
               path: [],
             },
           ],
-        });
+        }, requestId);
         return;
       }
 
-      const result = await processChatRequest(body, { ...options, conversationStore, memoryStore, learningReflector });
+      const result = await processChatRequest(body, {
+        ...options,
+        requestId,
+        requestTraceStore,
+        conversationStore,
+        memoryStore,
+        learningReflector,
+      });
+      sendJson(response, result.status, result.body, result.body.requestId);
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname.startsWith('/requests/')) {
+      const requestId = url.pathname.slice('/requests/'.length);
+      if (!requestId) {
+        sendJson(response, 404, { error: 'Request not found' });
+        return;
+      }
+
+      const result = processGetRequestById(requestId, requestTraceStore);
       sendJson(response, result.status, result.body);
       return;
     }

@@ -17,6 +17,18 @@ test('trace formatter keeps event order and types deterministic', () => {
   assert.match(output, /\[answer\] Finish triage and escalate if needed/);
 });
 
+test('trace formatter includes fallback events', () => {
+  const trace = [
+    createTraceEvent('fallback', 'Fallback acionado de primary para backup', {
+      node: 'model-factory',
+      args: { fromModel: 'primary', toModel: 'backup' },
+    }),
+  ];
+
+  const output = formatTrace(trace);
+  assert.match(output, /\[fallback\] Fallback acionado de primary para backup/);
+});
+
 test('reflect strategy returns contract-shaped result', async () => {
   const result = await reflectPlanAndExecuteStrategy.run('Valide o contrato de saída', 3);
   assert.equal(typeof result.answer, 'string');

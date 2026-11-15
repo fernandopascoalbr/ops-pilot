@@ -1,8 +1,20 @@
-export type TraceEventType = 'thought' | 'action' | 'observation' | 'plan' | 'critique' | 'answer' | 'summarize';
+export type TraceEventType =
+  | 'thought'
+  | 'action'
+  | 'observation'
+  | 'plan'
+  | 'critique'
+  | 'answer'
+  | 'summarize'
+  | 'route'
+  | 'fallback';
 
 export type TraceEvent = {
   type: TraceEventType;
   message: string;
+  node?: string;
+  route?: string;
+  reason?: string;
   tool?: string;
   args?: Record<string, unknown>;
   timestamp?: string;
@@ -11,6 +23,7 @@ export type TraceEvent = {
 export type StrategyMetrics = {
   llmCalls: number;
   latencyMs: number;
+  modelUsed?: string;
   interactionLimit?: number;
   stepsUsed?: number;
   promptTokens?: number | null;

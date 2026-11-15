@@ -14,6 +14,7 @@ Núcleo de raciocínio para **triagem operacional de alertas e incidentes**, com
 - [Estratégias de raciocínio](#estratégias-de-raciocínio)
 - [Ferramentas dos agentes](#ferramentas-dos-agentes)
 - [Dados e store](#dados-e-store)
+- [Estudos complementares](#estudos-complementares)
 - [Arena (CLI)](#arena-cli)
 - [API HTTP](#api-http)
 - [Pruning e summarizing incremental](#pruning-e-summarizing-incremental)
@@ -76,6 +77,7 @@ Variáveis lidas de `.env` (carregado via `--env-file` nos scripts; ver [src/con
 |---|---|---|---|
 | `OPENROUTER_API_KEY` | Não* | — | Chave do OpenRouter |
 | `OPENROUTER_MODEL` | Não | `openai/gpt-4o-mini` | Modelo usado pelas estratégias |
+| `OPENROUTER_MODEL_FALLBACK` | Não | — | Lista ordenada de modelos de reserva separados por vírgula |
 | `PORT` | Não | `3000` | Porta do servidor HTTP |
 
 Fixos: `baseURL = https://openrouter.ai/api/v1` e `temperature = 0`.
@@ -143,6 +145,11 @@ Definidas em [src/agents/tools.ts](src/agents/tools.ts) com `tool()` do LangChai
 - **Seed**: 5 serviços (`auth-api`, `payments-api`, `search-index`, `billing-worker`, `notification-gateway`) e 6 alertas (3 `firing`, 3 `resolved`).
 - Operações: `seedStore()`, `listAlerts(status)`, `openIncident(input)`, `resolveIncident(id)`, `persistStore()`.
 - Schemas de domínio (severidade, status de alerta/incidente) em [src/domain/alerts.ts](src/domain/alerts.ts).
+
+## Estudos complementares
+
+- [memory-concepts.md](./memory-concepts.md) — memória episódica, semântica, refletor de aprendizado e esquecimento.
+- [strategy-orchestration-concepts.md](./strategy-orchestration-concepts.md) — roteador automático de estratégia, retry/fallback de modelo, raio-x de grafo auditável e paralelismo em ondas.
 
 ## Arena (CLI)
 

@@ -1,6 +1,6 @@
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { listAlerts, store } from './ops-store.js';
-import { createModel } from './model.js';
+import { invokeWithModelFallbacks, ModelUnavailableError } from './model.js';
 import { createTraceEvent, countAiMessages, lastText, toTrace } from './trace.js';
 import type { ReasoningStrategy, StrategyRunResult } from '../domain/strategy.js';
 import { opsTools } from './tools.js';
@@ -30,40 +30,66 @@ export const reactStrategy: ReasoningStrategy = {
   name: 'react',
   async run(input: string, maxIterations = 12): Promise<StrategyRunResult> {
     const started = Date.now();
-    const promptTokensCollector = createPromptTokensCollector();
 
     try {
-      const agent = createReactAgent({
-        llm: createModel(),
-        tools: opsTools,
+      const execution = await invokeWithModelFallbacks(async (candidate) => {
+        const promptTokensCollector = createPromptTokensCollector();
+        const agent = createReactAgent({
+          llm: candidate.model,
+          tools: opsTools,
+        });
+
+        const result = await agent.invoke(
+          {
+            messages: [{ role: 'user', content: input }],
+          },
+          {
+            recursionLimit: maxIterations,
+            callbacks: [promptTokensCollector.callback],
+          },
+        );
+
+        return {
+          messages: result?.messages ?? [],
+          promptTokens: promptTokensCollector.getPromptTokens(),
+        };
       });
 
-      const result = await agent.invoke(
-        {
-          messages: [{ role: 'user', content: input }],
-        },
-        {
-          recursionLimit: maxIterations,
-          callbacks: [promptTokensCollector.callback],
-        },
-      );
-
-      const messages = result?.messages ?? [];
-      const trace = createReactTrace(messages);
-      const answer = lastText(messages);
-      const promptTokens = promptTokensCollector.getPromptTokens() ?? extractPromptTokensFromMessages(messages);
+      const trace = [
+        ...execution.fallbackTransitions.map((transition) => createTraceEvent(
+          'fallback',
+          `Fallback acionado de ${transition.fromModel} para ${transition.toModel}.`,
+          {
+            node: 'model-factory',
+            reason: transition.reason,
+            args: {
+              fromModel: transition.fromModel,
+              toModel: transition.toModel,
+              timestamp: transition.timestamp,
+            },
+          },
+        )),
+        ...createReactTrace(execution.value.messages),
+      ];
+      const answer = lastText(execution.value.messages);
+      const promptTokens = execution.value.promptTokens ?? extractPromptTokensFromMessages(execution.value.messages);
 
       return {
         answer,
         trace,
         metrics: {
-          llmCalls: countAiMessages(messages),
+          llmCalls: countAiMessages(execution.value.messages),
           latencyMs: Date.now() - started,
+          modelUsed: execution.modelUsed,
           interactionLimit: maxIterations,
           promptTokens,
         },
       };
     } catch (error) {
+      if (error instanceof ModelUnavailableError) {
+        throw error;
+      }
+
       const fallback = fallbackReactAnswer(input);
       return {
         answer: fallback.answer,

@@ -33,7 +33,7 @@ export async function requestJson(
   method: string,
   body: Record<string, unknown> | undefined,
   options: ChatServerOptions = {},
-): Promise<{ status: number; body: any }> {
+): Promise<{ status: number; body: any; headers: Headers }> {
   const server = await startTestServer(options);
 
   try {
@@ -48,6 +48,7 @@ export async function requestJson(
     return {
       status: response.status,
       body: json,
+      headers: response.headers,
     };
   } finally {
     await server.close();
@@ -57,7 +58,7 @@ export async function requestJson(
 export async function postChat(
   body: Record<string, unknown>,
   options: ChatServerOptions = {},
-): Promise<{ status: number; body: any }> {
+): Promise<{ status: number; body: any; headers: Headers }> {
   return requestJson('/chat', 'POST', body, options);
 }
 

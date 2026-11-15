@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Callbacks } from '@langchain/core/callbacks/manager';
-import { createModel } from './model.js';
+import { invokeStructuredWithModelFallbacks, ModelUnavailableError, type FallbackTransition } from './model.js';
 import { listAlerts, openIncident, resolveIncident, store } from './ops-store.js';
 import { createTraceEvent } from './trace.js';
 import type { ReasoningStrategy, StrategyRunResult } from '../domain/strategy.js';
@@ -61,23 +61,32 @@ async function planner(
   input: string,
   llmCalls: { planner: number; replanner: number },
   callbacks: Callbacks,
-): Promise<string[]> {
+): Promise<{ steps: string[]; modelUsed: string; fallbackTransitions: FallbackTransition[] }> {
   try {
-    const model = createModel().withStructuredOutput(planSchema);
-    llmCalls.planner += 1;
-    const result = await model.invoke([
-      ['system', PLANNER_PROMPT],
-      ['user', JSON.stringify({ input, services: store.services, alerts: listAlerts('all') })],
-    ], { callbacks });
+    const execution = await invokeStructuredWithModelFallbacks(
+      (model, modelCallbacks) => model.withStructuredOutput(planSchema).invoke([
+        ['system', PLANNER_PROMPT],
+        ['user', JSON.stringify({ input, services: store.services, alerts: listAlerts('all') })],
+      ], { callbacks: modelCallbacks }),
+      callbacks,
+    );
+    llmCalls.planner += execution.attempts.length;
 
-    if (Array.isArray(result.steps) && result.steps.length > 0) {
-      return result.steps.slice(0, 8);
+    if (Array.isArray(execution.value.steps) && execution.value.steps.length > 0) {
+      return {
+        steps: execution.value.steps.slice(0, 8),
+        modelUsed: execution.modelUsed,
+        fallbackTransitions: execution.fallbackTransitions,
+      };
     }
   } catch (error) {
+    if (error instanceof ModelUnavailableError) {
+      throw error;
+    }
     console.warn('[plan-and-execute] planner fallback: OpenRouter unavailable or not configured.', error instanceof Error ? error.message : error);
   }
 
-  return fallbackPlan(input);
+  return { steps: fallbackPlan(input), modelUsed: 'local-fallback', fallbackTransitions: [] };
 }
 
 async function replanner(
@@ -86,20 +95,31 @@ async function replanner(
   done: string[],
   llmCalls: { planner: number; replanner: number },
   callbacks: Callbacks,
-): Promise<{ decision: 'adjust' | 'continue' | 'end'; reasoning: string; updatedSteps?: string[] }> {
+): Promise<{
+  decision: 'adjust' | 'continue' | 'end';
+  reasoning: string;
+  updatedSteps?: string[];
+  modelUsed: string;
+  fallbackTransitions: FallbackTransition[];
+}> {
   try {
-    const model = createModel().withStructuredOutput(replannerSchema);
-    llmCalls.replanner += 1;
-    const result = await model.invoke([
-      ['system', REPLANNER_PROMPT],
-      ['user', JSON.stringify({ input, remaining, done })],
-    ], { callbacks });
+    const execution = await invokeStructuredWithModelFallbacks(
+      (model, modelCallbacks) => model.withStructuredOutput(replannerSchema).invoke([
+        ['system', REPLANNER_PROMPT],
+        ['user', JSON.stringify({ input, remaining, done })],
+      ], { callbacks: modelCallbacks }),
+      callbacks,
+    );
+    llmCalls.replanner += execution.attempts.length;
+    const result = execution.value;
 
     if (result.decision) {
       return {
         decision: result.decision,
         reasoning: result.reasoning,
         updatedSteps: result.updatedSteps ?? remaining,
+        modelUsed: execution.modelUsed,
+        fallbackTransitions: execution.fallbackTransitions,
       };
     }
   } catch (error) {
@@ -107,14 +127,31 @@ async function replanner(
   }
 
   if (remaining.length === 0) {
-    return { decision: 'end', reasoning: 'Nenhum passo restante; encerrando a execução.' };
+    return {
+      decision: 'end',
+      reasoning: 'Nenhum passo restante; encerrando a execução.',
+      modelUsed: 'local-fallback',
+      fallbackTransitions: [],
+    };
   }
 
   if (done.length >= 4 && remaining.length > 1) {
-    return { decision: 'continue', reasoning: 'Continuação adequada porque ainda há passos relevantes.', updatedSteps: remaining };
+    return {
+      decision: 'continue',
+      reasoning: 'Continuação adequada porque ainda há passos relevantes.',
+      updatedSteps: remaining,
+      modelUsed: 'local-fallback',
+      fallbackTransitions: [],
+    };
   }
 
-  return { decision: 'continue', reasoning: 'Seguindo com o plano atual.', updatedSteps: remaining };
+  return {
+    decision: 'continue',
+    reasoning: 'Seguindo com o plano atual.',
+    updatedSteps: remaining,
+    modelUsed: 'local-fallback',
+    fallbackTransitions: [],
+  };
 }
 
 async function executor(step: string, input: string): Promise<{ tool?: string; args?: Record<string, unknown>; summary: string }> {
@@ -185,15 +222,29 @@ export const planAndExecuteStrategy: ReasoningStrategy = {
   name: 'plan-and-execute',
   async run(input: string, maxIterations = 8): Promise<StrategyRunResult> {
     const started = Date.now();
-    const trace = [createTraceEvent('thought', `Planejando resposta para: ${input}`)];
+      const trace = [createTraceEvent('thought', `Planejando resposta para: ${input}`)];
     const limit = Math.min(Math.max(1, maxIterations), 8);
     const llmCalls = { planner: 0, replanner: 0 };
     const promptTokensCollector = createPromptTokensCollector();
 
-    let steps = await planner(input, llmCalls, [promptTokensCollector.callback]);
+    const planning = await planner(input, llmCalls, [promptTokensCollector.callback]);
+    let steps = planning.steps;
     let remaining = steps.slice(0, limit);
     const done: string[] = [];
     let stepsUsed = 0;
+    let modelUsed = planning.modelUsed;
+
+    for (const transition of planning.fallbackTransitions) {
+      trace.push(createTraceEvent('fallback', `Fallback acionado de ${transition.fromModel} para ${transition.toModel}.`, {
+        node: 'model-factory',
+        reason: transition.reason,
+        args: {
+          fromModel: transition.fromModel,
+          toModel: transition.toModel,
+          timestamp: transition.timestamp,
+        },
+      }));
+    }
 
     while (remaining.length > 0 && stepsUsed < limit) {
       const step = remaining.shift();
@@ -212,6 +263,18 @@ export const planAndExecuteStrategy: ReasoningStrategy = {
 
       const decision = await replanner(input, remaining, done, llmCalls, [promptTokensCollector.callback]);
       trace.push(createTraceEvent('critique', `${decision.decision.toUpperCase()}: ${decision.reasoning}`));
+      modelUsed = decision.modelUsed;
+      for (const transition of decision.fallbackTransitions) {
+        trace.push(createTraceEvent('fallback', `Fallback acionado de ${transition.fromModel} para ${transition.toModel}.`, {
+          node: 'model-factory',
+          reason: transition.reason,
+          args: {
+            fromModel: transition.fromModel,
+            toModel: transition.toModel,
+            timestamp: transition.timestamp,
+          },
+        }));
+      }
 
       if (decision.decision === 'adjust') {
         remaining = (decision.updatedSteps && decision.updatedSteps.length > 0 ? decision.updatedSteps : remaining).slice(0, limit - stepsUsed);
@@ -234,6 +297,7 @@ export const planAndExecuteStrategy: ReasoningStrategy = {
       metrics: {
         llmCalls: llmCalls.planner + llmCalls.replanner,
         latencyMs: Date.now() - started,
+        modelUsed,
         interactionLimit: limit,
         stepsUsed,
         promptTokens: promptTokensCollector.getPromptTokens(),

@@ -1,0 +1,100 @@
+contract: chat-routing
+version: 1
+description: >
+  Contrato funcional do endpoint POST /chat para resposta com rota, motivo e
+  rastreio do grafo unificado de decisão.
+
+endpoint:
+  method: POST
+  path: /chat
+  content_type: application/json
+
+request:
+  required_fields: [message]
+  fields:
+    message:
+      type: string
+      required: true
+      min_length: 1
+    strategy:
+      type: string
+      required: false
+      default: react
+    reflect:
+      type: boolean
+      required: false
+      default: false
+    conversationId:
+      type: string
+      required: false
+    userId:
+      type: string
+      required: false
+
+responses:
+  "200":
+    description: Processamento concluído com sucesso
+    body:
+      required_fields: [answer, route, reason, trace, metrics]
+      fields:
+        answer:
+          type: string
+        route:
+          type: string
+          description: Rota selecionada pelo roteador do grafo unificado
+        reason:
+          type: string
+          description: Justificativa da rota em linguagem clara
+        trace:
+          type: array
+          item_schema:
+            type: object
+            required_fields: [type, message, node, route]
+            fields:
+              type:
+                type: string
+              message:
+                type: string
+              node:
+                type: string
+              route:
+                type: string
+              timestamp:
+                type: string
+                required: false
+        metrics:
+          type: object
+          required_fields: [llmCalls, latencyMs]
+  "400":
+    description: Corpo inválido
+    body:
+      required_fields: [issues]
+      fields:
+        issues:
+          type: array
+  "422":
+    description: Estratégia desconhecida
+    body:
+      required_fields: [error]
+      fields:
+        error:
+          type: string
+  "504":
+    description: Tempo limite excedido
+    body:
+      required_fields: [error]
+      fields:
+        error:
+          type: string
+
+behavioral_rules:
+  - id: BR-001
+    rule: Cada requisição do `/chat` deve incluir a rota escolhida e a justificativa em resposta bem-sucedida.
+  - id: BR-002
+    rule: O roteador deve usar saída estruturada com `route` e `reason` para aderir a um contrato determinístico.
+  - id: BR-003
+    rule: A sequência de trace deve manter `node` associado a cada etapa, inclusive a decisão do router.
+  - id: BR-004
+    rule: Quando o contexto for ambiguo, a decisão deve expor incerteza em vez de esconder a ambiguidade.
+  - id: BR-005
+    rule: A estrategia final deve refletir o mesmo `route` exposto no corpo de resposta e no trace do fluxo.

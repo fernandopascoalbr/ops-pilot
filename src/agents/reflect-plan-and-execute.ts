@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Callbacks } from '@langchain/core/callbacks/manager';
-import { createModel } from './model.js';
+import { invokeStructuredWithModelFallbacks, ModelUnavailableError, type FallbackTransition } from './model.js';
 import { listAlerts, openIncident, resolveIncident, store } from './ops-store.js';
 import { clampIterationLimit, createTraceEvent, shouldStopByPolicy } from './trace.js';
 import type { ReasoningStrategy, StrategyRunResult } from '../domain/strategy.js';
@@ -57,17 +57,26 @@ async function planner(
   input: string,
   llmCalls: { value: number },
   callbacks: Callbacks,
-): Promise<string[]> {
+): Promise<{ steps: string[]; modelUsed: string; fallbackTransitions: FallbackTransition[] }> {
   try {
-    const model = createModel().withStructuredOutput(planSchema);
-    llmCalls.value += 1;
-    const result = await model.invoke([
-      ['system', PLANNER_PROMPT],
-      ['user', JSON.stringify({ input, alerts: listAlerts('all'), services: store.services })],
-    ], { callbacks });
-    return result.steps.slice(0, 8);
-  } catch {
-    return fallbackPlan(input);
+    const execution = await invokeStructuredWithModelFallbacks(
+      (model, modelCallbacks) => model.withStructuredOutput(planSchema).invoke([
+        ['system', PLANNER_PROMPT],
+        ['user', JSON.stringify({ input, alerts: listAlerts('all'), services: store.services })],
+      ], { callbacks: modelCallbacks }),
+      callbacks,
+    );
+    llmCalls.value += execution.attempts.length;
+    return {
+      steps: execution.value.steps.slice(0, 8),
+      modelUsed: execution.modelUsed,
+      fallbackTransitions: execution.fallbackTransitions,
+    };
+  } catch (error) {
+    if (error instanceof ModelUnavailableError) {
+      throw error;
+    }
+    return { steps: fallbackPlan(input), modelUsed: 'local-fallback', fallbackTransitions: [] };
   }
 }
 
@@ -129,12 +138,15 @@ async function reflect(
   callbacks: Callbacks,
 ): Promise<ReflectionResult> {
   try {
-    const model = createModel().withStructuredOutput(reflectionSchema);
-    llmCalls.value += 1;
-    const result = await model.invoke([
-      ['system', REFLECT_PROMPT],
-      ['user', JSON.stringify({ input, remaining, summary, stepsUsed })],
-    ], { callbacks });
+    const execution = await invokeStructuredWithModelFallbacks(
+      (model, modelCallbacks) => model.withStructuredOutput(reflectionSchema).invoke([
+        ['system', REFLECT_PROMPT],
+        ['user', JSON.stringify({ input, remaining, summary, stepsUsed })],
+      ], { callbacks: modelCallbacks }),
+      callbacks,
+    );
+    llmCalls.value += execution.attempts.length;
+    const result = execution.value;
     return {
       confidence: result.confidence ?? 'low',
       decision: result.decision,
@@ -201,9 +213,23 @@ export const reflectPlanAndExecuteStrategy: ReasoningStrategy = {
     const effectiveLimit = clampIterationLimit(maxIterations, DEFAULT_POLICY.maxIterations, 8);
     const trace = [createTraceEvent('thought', `Iniciando reflect plan-and-execute para: ${input}`)];
 
-    let remaining = await planner(input, llmCalls, [promptTokensCollector.callback]);
+    const planning = await planner(input, llmCalls, [promptTokensCollector.callback]);
+    let remaining = planning.steps;
+    let modelUsed = planning.modelUsed;
+    for (const transition of planning.fallbackTransitions) {
+      trace.push(createTraceEvent('fallback', `Fallback acionado de ${transition.fromModel} para ${transition.toModel}.`, {
+        node: 'model-factory',
+        reason: transition.reason,
+        args: {
+          fromModel: transition.fromModel,
+          toModel: transition.toModel,
+          timestamp: transition.timestamp,
+        },
+      }));
+    }
     if (remaining.length === 0) {
       remaining = fallbackPlan(input);
+      modelUsed = 'local-fallback';
     }
     remaining = remaining.slice(0, effectiveLimit);
 
@@ -290,6 +316,7 @@ export const reflectPlanAndExecuteStrategy: ReasoningStrategy = {
       metrics: {
         llmCalls: llmCalls.value,
         latencyMs: Date.now() - started,
+        modelUsed,
         interactionLimit: effectiveLimit,
         stepsUsed,
         promptTokens: promptTokensCollector.getPromptTokens(),

@@ -1,0 +1,104 @@
+contract: chat-model-resilience
+version: 1
+description: >
+  Contrato funcional do POST /chat para resiliência de modelo com retry no
+  primário, fallback ordenado, rastreio de fallback e erro 503 quando nenhum
+  modelo disponível responder.
+
+endpoint:
+  method: POST
+  path: /chat
+  content_type: application/json
+
+request:
+  required_fields: [message]
+  fields:
+    message:
+      type: string
+      required: true
+      min_length: 1
+    strategy:
+      type: string
+      required: false
+    reflect:
+      type: boolean
+      required: false
+    conversationId:
+      type: string
+      required: false
+    userId:
+      type: string
+      required: false
+
+responses:
+  "200":
+    description: Processamento concluído com sucesso por um modelo disponível
+    body:
+      required_fields: [conversationId, answer, route, reason, trace, metrics]
+      fields:
+        trace:
+          type: array
+          item_schema:
+            type: object
+            required_fields: [type, message]
+            fields:
+              type:
+                type: string
+                description: Deve incluir evento `fallback` quando houver troca de modelo
+              message:
+                type: string
+              route:
+                type: string
+                required: false
+              reason:
+                type: string
+                required: false
+        metrics:
+          type: object
+          required_fields: [llmCalls, latencyMs, route, routeReason, modelUsed]
+          fields:
+            modelUsed:
+              type: string
+              description: Modelo que gerou a resposta final
+  "400":
+    description: Corpo inválido
+  "404":
+    description: Conversa não encontrada
+  "422":
+    description: Estratégia desconhecida
+  "503":
+    description: Nenhum modelo conseguiu responder após retries e fallback
+    body:
+      required_fields: [error]
+      fields:
+        error:
+          type: string
+  "504":
+    description: Tempo limite excedido da requisição
+    body:
+      required_fields: [error]
+      fields:
+        error:
+          type: string
+
+configuration:
+  env:
+    OPENROUTER_MODEL:
+      required: false
+      default: openai/gpt-4o-mini
+      description: Modelo primário
+    OPENROUTER_MODEL_FALLBACK:
+      required: false
+      description: Lista ordenada de modelos de reserva (separados por vírgula)
+
+behavioral_rules:
+  - id: BR-MR-001
+    rule: O fluxo deve aplicar retry no modelo primário antes de iniciar fallback.
+  - id: BR-MR-002
+    rule: O fallback deve seguir estritamente a ordem definida em OPENROUTER_MODEL_FALLBACK.
+  - id: BR-MR-003
+    rule: Cada transição para modelo de reserva deve emitir evento de trace com type=fallback.
+  - id: BR-MR-004
+    rule: Em status 200, metrics.modelUsed deve indicar o modelo que respondeu.
+  - id: BR-MR-005
+    rule: Quando todos os modelos falharem, o endpoint deve retornar 503 sem resposta de sucesso degradada.
