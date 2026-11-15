@@ -1,6 +1,15 @@
 import { DatabaseSync } from 'node:sqlite';
 import { resolveOpsDbPath } from './sqlite-ops-store.js';
-import type { RequestRecord, RequestTraceStore, RequestTraceView, TraceEventRecord } from './request-trace-store.js';
+import type {
+  RequestRecord,
+  RequestStatsByModel,
+  RequestStatsByRoute,
+  RequestStatsSummary,
+  RequestStatsView,
+  RequestTraceStore,
+  RequestTraceView,
+  TraceEventRecord,
+} from './request-trace-store.js';
 
 function toRequestRecord(row: any): RequestRecord {
   return {
@@ -27,6 +36,78 @@ function toTraceEventRecord(row: any): TraceEventRecord {
     payload: row.payload ? JSON.parse(row.payload) : {},
     occurredAt: row.occurred_at,
   };
+}
+
+type StatsSourceRow = {
+  status: string;
+  route: string;
+  prompt_tokens: number | null;
+  model_used: string | null;
+  latency_ms: number;
+};
+
+type StatsAccumulator = {
+  total: number;
+  errors: number;
+  tokens: number;
+  costUsd: number;
+  latencies: number[];
+};
+
+function createAccumulator(): StatsAccumulator {
+  return {
+    total: 0,
+    errors: 0,
+    tokens: 0,
+    costUsd: 0,
+    latencies: [],
+  };
+}
+
+function percentile(values: number[], target: 0.5 | 0.95): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+
+  const ordered = [...values].sort((left, right) => left - right);
+  const index = Math.ceil(target * ordered.length) - 1;
+  const normalizedIndex = Math.max(0, Math.min(index, ordered.length - 1));
+  return ordered[normalizedIndex];
+}
+
+function toSummary(acc: StatsAccumulator): RequestStatsSummary {
+  return {
+    total: acc.total,
+    errors: acc.errors,
+    tokens: acc.tokens,
+    costUsd: Number(acc.costUsd.toFixed(6)),
+    latencyMs: {
+      p50: percentile(acc.latencies, 0.5),
+      p95: percentile(acc.latencies, 0.95),
+    },
+  };
+}
+
+function computeRequestCostUsd(model: string | null): number {
+  if (!model) {
+    return 0;
+  }
+
+  if (model.endsWith(':free')) {
+    return 0;
+  }
+
+  return 0;
+}
+
+function pushRow(acc: StatsAccumulator, row: StatsSourceRow): void {
+  acc.total += 1;
+  if (row.status === 'error') {
+    acc.errors += 1;
+  }
+  acc.tokens += row.prompt_tokens ?? 0;
+  acc.costUsd += computeRequestCostUsd(row.model_used);
+  acc.latencies.push(row.latency_ms);
 }
 
 export class SqliteRequestTraceStore implements RequestTraceStore {
@@ -145,6 +226,53 @@ export class SqliteRequestTraceStore implements RequestTraceStore {
     return {
       request: toRequestRecord(requestRow),
       trace: traceRows.map(toTraceEventRecord),
+    };
+  }
+
+  getRequestStats(from: string, to: string): RequestStatsView {
+    const rows = this.db.prepare(`
+      SELECT status, route, prompt_tokens, model_used, latency_ms
+      FROM requests
+      WHERE created_at >= ? AND created_at <= ?
+    `).all(from, to) as StatsSourceRow[];
+
+    const total = createAccumulator();
+    const byRoute = new Map<string, StatsAccumulator>();
+    const byModel = new Map<string, StatsAccumulator>();
+
+    for (const row of rows) {
+      pushRow(total, row);
+
+      const routeBucket = byRoute.get(row.route) ?? createAccumulator();
+      pushRow(routeBucket, row);
+      byRoute.set(row.route, routeBucket);
+
+      const modelKey = row.model_used && row.model_used.length > 0 ? row.model_used : 'unknown';
+      const modelBucket = byModel.get(modelKey) ?? createAccumulator();
+      pushRow(modelBucket, row);
+      byModel.set(modelKey, modelBucket);
+    }
+
+    const routeStats: RequestStatsByRoute[] = Array.from(byRoute.entries())
+      .map(([route, acc]) => ({
+        route,
+        ...toSummary(acc),
+      }))
+      .sort((left, right) => right.total - left.total || left.route.localeCompare(right.route));
+
+    const modelStats: RequestStatsByModel[] = Array.from(byModel.entries())
+      .map(([model, acc]) => ({
+        model,
+        ...toSummary(acc),
+      }))
+      .sort((left, right) => right.total - left.total || left.model.localeCompare(right.model));
+
+    return {
+      from,
+      to,
+      ...toSummary(total),
+      byRoute: routeStats,
+      byModel: modelStats,
     };
   }
 }

@@ -202,6 +202,20 @@ curl -X POST http://localhost:3000/chat \
 
 Limites: corpo máximo de 1 MB e `maxIterations` padrão 8 por requisição.
 
+### Endpoint `GET /stats?since=24h`
+
+Agrega métricas das requests persistidas no banco local de traces (`requests`):
+
+- `total`: volume total no intervalo
+- `errors`: volume com `status=error`
+- `tokens`: soma de `promptTokens` (nulos contam como 0)
+- `costUsd`: custo agregado (modelos `:free` contabilizam `0`)
+- `latencyMs.p50` e `latencyMs.p95`
+- `byRoute[]`: mesma visão agregada por rota
+- `byModel[]`: mesma visão agregada por modelo (`unknown` quando ausente)
+
+Formato de `since`: `\d+[smhd]` (ex.: `30m`, `24h`, `7d`). Valor padrão: `24h`.
+
 ## Pruning e summarizing incremental
 
 Para conversas longas, o `POST /chat` aplica compactação incremental de histórico:

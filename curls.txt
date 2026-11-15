@@ -13,3 +13,6 @@ RID=$(
 )
 
 curl -s "localhost:3000/requests/$RID" | jq .
+
+
+curl -s "localhost:3000/stats?since=24h" | jq .

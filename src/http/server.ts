@@ -44,6 +44,12 @@ const memoryRecallQuerySchema = z.object({
   minScore: z.coerce.number().min(0).max(1).default(DEFAULT_MEMORY_RECALL_MIN_SCORE),
 });
 
+const sinceDurationSchema = z.string().trim().regex(/^\d+[smhd]$/, 'since must be a duration like 24h, 30m, 7d');
+
+const statsQuerySchema = z.object({
+  since: sinceDurationSchema.default('24h'),
+});
+
 type ChatResultBody = {
   requestId: string;
   conversationId: string;
@@ -72,6 +78,10 @@ type MemoryHttpResponse =
   | { status: 201; body: Record<string, unknown> }
   | { status: 400; body: { issues: z.ZodIssue[] | Array<{ code: string; message: string; path: (string | number)[] }> } };
 
+type StatsHttpResponse =
+  | { status: 200; body: Record<string, unknown> }
+  | { status: 400; body: { issues: z.ZodIssue[] | Array<{ code: string; message: string; path: (string | number)[] }> } };
+
 export type ChatServerOptions = {
   timeoutMs?: number;
   maxIterations?: number;
@@ -87,6 +97,24 @@ class TimeoutError extends Error {
   constructor(timeoutMs: number) {
     super(`Chat request timed out after ${timeoutMs}ms`);
     this.name = 'TimeoutError';
+  }
+}
+
+function durationToMilliseconds(duration: string): number {
+  const value = Number.parseInt(duration.slice(0, -1), 10);
+  const unit = duration.at(-1);
+
+  switch (unit) {
+    case 's':
+      return value * 1_000;
+    case 'm':
+      return value * 60_000;
+    case 'h':
+      return value * 3_600_000;
+    case 'd':
+      return value * 86_400_000;
+    default:
+      return 0;
   }
 }
 
@@ -456,6 +484,33 @@ function processGetRequestById(requestId: string, requestTraceStore: RequestTrac
   };
 }
 
+function processGetStats(url: URL, requestTraceStore: RequestTraceStore): StatsHttpResponse {
+  const parsed = statsQuerySchema.safeParse({
+    since: url.searchParams.get('since') ?? '24h',
+  });
+
+  if (!parsed.success) {
+    return {
+      status: 400,
+      body: { issues: parsed.error.issues },
+    };
+  }
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const sinceMs = durationToMilliseconds(parsed.data.since);
+  const fromIso = new Date(now.getTime() - sinceMs).toISOString();
+  const stats = requestTraceStore.getRequestStats(fromIso, nowIso);
+
+  return {
+    status: 200,
+    body: {
+      since: parsed.data.since,
+      ...stats,
+    },
+  };
+}
+
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -548,6 +603,12 @@ export function createServer(options: ChatServerOptions = {}): Server {
       }
 
       const result = processGetRequestById(requestId, requestTraceStore);
+      sendJson(response, result.status, result.body);
+      return;
+    }
+
+    if (request.method === 'GET' && url.pathname === '/stats') {
+      const result = processGetStats(url, requestTraceStore);
       sendJson(response, result.status, result.body);
       return;
     }
