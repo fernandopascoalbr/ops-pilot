@@ -11,6 +11,7 @@ Núcleo de raciocínio para **triagem operacional de alertas e incidentes**, com
 - [Começando](#começando)
 - [Configuração](#configuração)
 - [Scripts](#scripts)
+- [Deploy Web no GitHub Pages](#deploy-web-no-github-pages)
 - [Estratégias de raciocínio](#estratégias-de-raciocínio)
 - [Ferramentas dos agentes](#ferramentas-dos-agentes)
 - [Dados e store](#dados-e-store)
@@ -95,6 +96,38 @@ Fixos: `baseURL = https://openrouter.ai/api/v1` e `temperature = 0`.
 | `npm run mcp` | Sobe o servidor MCP `opspilot` via stdio |
 | `npm test` | Roda a suíte de testes (`node:test`) |
 | `bash scripts/conversa-longa.sh` | Executa conversa multi-turno e imprime `promptTokens` por turno |
+
+## Deploy Web no GitHub Pages
+
+O frontend em [web/](web/) pode ser publicado automaticamente no GitHub Pages via workflow:
+
+- Arquivo: `.github/workflows/deploy-web-pages.yml`
+- Jobs: `build-and-upload` (gera/upload de artefato) e `deploy-pages` (publica no Pages)
+- Triggers: `push` na `main` com mudanças em `web/**` ou execução manual (`workflow_dispatch`)
+
+### Permissões esperadas do workflow
+
+O deploy declara permissões explícitas e mínimas:
+
+- `contents: read`
+- `pages: write`
+- `id-token: write`
+
+### Como validar a publicação
+
+1. Faça merge/push de alteração em `web/` (ou execute manualmente o workflow).
+2. Abra o run de **Deploy web to GitHub Pages** no Actions.
+3. Verifique:
+   - `build-and-upload` concluído com sucesso;
+   - `deploy-pages` concluído com sucesso;
+   - URL publicada no ambiente `github-pages`.
+4. Abra a URL e confirme que corresponde ao commit publicado.
+
+### Diagnóstico rápido de falhas
+
+- **Permissão insuficiente**: erro explícito de autorização no job `deploy-pages`.
+- **Artefato ausente/inválido**: erro explícito de validação do `github-pages` artifact antes do deploy.
+- **Build quebrado**: falha no job `build-and-upload` (instalação/build ou ausência de `web/dist/index.html`).
 
 ## Estratégias de raciocínio
 

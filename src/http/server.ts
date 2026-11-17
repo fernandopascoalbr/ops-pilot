@@ -536,6 +536,31 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   }
 }
 
+function getAllowedOrigins(): string[] {
+  const configured = process.env.ALLOWED_ORIGINS ?? '';
+  return configured
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+function applyCorsHeaders(response: ServerResponse, origin: string | undefined, requestedHeaders?: string): void {
+  const allowedOrigins = getAllowedOrigins();
+  const resolvedOrigin = origin && (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) ? origin : undefined;
+
+  response.setHeader('Vary', 'Origin, Access-Control-Request-Headers');
+  response.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', requestedHeaders || 'Content-Type, Authorization, X-Requested-With, Accept');
+  response.setHeader('Access-Control-Allow-Private-Network', 'true');
+  response.setHeader('Access-Control-Allow-Credentials', 'true');
+  response.setHeader('Access-Control-Expose-Headers', 'X-Request-Id');
+  response.setHeader('Access-Control-Max-Age', '600');
+
+  if (resolvedOrigin) {
+    response.setHeader('Access-Control-Allow-Origin', resolvedOrigin);
+  }
+}
+
 function sendJson(response: ServerResponse, statusCode: number, payload: unknown, requestId?: string): void {
   response.statusCode = statusCode;
   response.setHeader('content-type', 'application/json; charset=utf-8');
@@ -565,6 +590,15 @@ export function createServer(options: ChatServerOptions = {}): Server {
   });
 
   return createNodeServer(async (request, response) => {
+    const origin = request.headers.origin;
+    applyCorsHeaders(response, origin, request.headers['access-control-request-headers'] as string | undefined);
+
+    if (request.method === 'OPTIONS') {
+      response.statusCode = 204;
+      response.end();
+      return;
+    }
+
     const url = new URL(request.url ?? '/', 'http://localhost');
     if (request.method === 'POST' && url.pathname === '/chat') {
       const requestId = randomUUID();

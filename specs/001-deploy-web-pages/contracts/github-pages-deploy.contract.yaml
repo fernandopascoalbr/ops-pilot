@@ -1,0 +1,62 @@
+contract:
+  name: github-pages-deploy
+  version: 1.0.0
+  description: >
+    Contrato funcional para publicação da pasta web no GitHub Pages com duas etapas
+    explícitas: upload de artefato e deploy, incluindo permissões mínimas e
+    observabilidade de falhas.
+
+workflow:
+  file:
+    path: .github/workflows/deploy-web-pages.yml
+  trigger:
+    supported:
+      - push
+      - workflow_dispatch
+    must_include:
+      - branch or manual trigger strategy documented in README
+  permissions:
+    required:
+      contents: read
+      pages: write
+      id-token: write
+    rule: Must not rely on implicit repository-wide permissions.
+
+jobs:
+  - id: build-and-upload
+    purpose: Gerar artefato de publicação a partir da pasta web.
+    requirements:
+      - Must build the web project before artifact upload.
+      - Must fail explicitly when `web/dist` or `web/dist/index.html` does not exist.
+      - Must upload exactly one deployable artifact for Pages.
+    outputs:
+      - artifact available for downstream deploy job
+    failure_contract:
+      - Must fail with explicit error when build or artifact upload fails.
+
+  - id: deploy-pages
+    purpose: Publicar no GitHub Pages consumindo o artefato do job anterior.
+    requirements:
+      - Must depend on successful completion of build-and-upload.
+      - Must check that `github-pages` artifact exists before deploy action execution.
+      - Must use the uploaded artifact as single deploy source.
+      - Must expose deployment result in workflow run summary/log.
+    failure_contract:
+      - Must fail explicitly on permission errors.
+      - Must fail explicitly when artifact is missing or invalid.
+
+observability:
+  success_signals:
+    - Workflow run ends with success status.
+    - Deploy job indicates published environment and URL.
+  failure_signals:
+    - Authorization failure clearly visible in job logs.
+    - Artifact-not-found or invalid-artifact error clearly visible in logs.
+
+documentation_contract:
+  file: README.md
+  must_document:
+    - When deploy runs
+    - Required permissions expectations
+    - How to confirm published version
+    - Common failure diagnosis path

@@ -1,0 +1,472 @@
+.app-shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px 24px 40px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: clamp(2rem, 2.6vw, 3.2rem);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eyebrow {
+  display: inline-block;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.ghost-button,
+.primary-button,
+.secondary-button,
+.icon-button,
+.approve-button,
+.reject-button,
+.decision-header,
+.trace-item {
+  border: 1px solid transparent;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.ghost-button,
+.icon-button {
+  background: var(--panel-alt);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.ghost-button:hover,
+.icon-button:hover,
+.primary-button:hover,
+.secondary-button:hover,
+.approve-button:hover,
+.reject-button:hover,
+.trace-item:hover,
+.decision-header:hover {
+  transform: translateY(-1px);
+}
+
+.primary-button,
+.secondary-button,
+.approve-button,
+.reject-button {
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary-button {
+  background: var(--accent);
+  color: white;
+}
+
+.secondary-button {
+  background: var(--panel-alt);
+  color: var(--text);
+}
+
+.approve-button {
+  background: rgba(34, 197, 94, 0.15);
+  color: #1d8f4d;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.reject-button {
+  background: rgba(239, 68, 68, 0.12);
+  color: #c23a3a;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.war-room-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.95fr);
+  gap: 24px;
+}
+
+.primary-column,
+.secondary-column {
+  min-width: 0;
+}
+
+.secondary-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.chat-shell,
+.panel,
+.trace-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+}
+
+.chat-shell {
+  padding: 20px;
+}
+
+.chat-header,
+.panel-header,
+.trace-header,
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.chat-header h2,
+.panel-header h3,
+.trace-header h3,
+.settings-header h3 {
+  margin: 0;
+}
+
+.status-pill,
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+}
+
+.chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 440px;
+  max-height: 560px;
+  overflow: auto;
+  padding-right: 8px;
+}
+
+.message-row {
+  display: flex;
+}
+
+.message-row.assistant {
+  justify-content: flex-start;
+}
+
+.message-row.user {
+  justify-content: flex-end;
+}
+
+.message-row.system {
+  justify-content: center;
+}
+
+.message-bubble {
+  max-width: 78%;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+
+.message-row.user .message-bubble {
+  background: var(--accent-soft);
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+.message-role {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 8px;
+  letter-spacing: 0.03em;
+}
+
+.message-bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.empty-state,
+.empty-panel {
+  display: grid;
+  place-items: center;
+  min-height: 160px;
+  padding: 18px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--panel-alt);
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+}
+
+.chat-form {
+  margin-top: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chat-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 120px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel-alt);
+  color: var(--text);
+  padding: 14px 16px;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.panel,
+.trace-panel {
+  padding: 18px;
+}
+
+.decision-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.decision-card {
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.decision-card.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.25);
+}
+
+.decision-header {
+  background: transparent;
+  color: var(--text);
+  width: 100%;
+  border: none;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+
+.decision-card h3 {
+  margin: 0;
+}
+
+.decision-card p {
+  margin: 12px 0;
+}
+
+.decision-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.status-pending {
+  background: rgba(251, 191, 36, 0.15);
+  color: #b7791f;
+}
+
+.status-approved {
+  background: rgba(34, 197, 94, 0.15);
+  color: #1d8f4d;
+}
+
+.status-rejected {
+  background: rgba(239, 68, 68, 0.12);
+  color: #c23a3a;
+}
+
+.decision-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.trace-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.trace-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.trace-item.active {
+  border-color: var(--accent);
+}
+
+.trace-item strong {
+  display: block;
+  margin-bottom: 6px;
+  text-transform: capitalize;
+}
+
+.trace-item p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.trace-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.trace-dot.action { background: #60a5fa; }
+.trace-dot.decision { background: #fbbf24; }
+.trace-dot.critique { background: #f87171; }
+.trace-dot.result { background: #34d399; }
+.trace-dot.info { background: #a78bfa; }
+
+.error-banner {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.error-banner strong,
+.error-banner p {
+  color: #b45309;
+}
+
+.error-banner p {
+  margin: 0;
+}
+
+.loading-overlay {
+  position: fixed;
+  inset: auto 18px 18px auto;
+  background: rgba(15, 23, 42, 0.85);
+  color: white;
+  border-radius: 999px;
+  padding: 10px 14px;
+  box-shadow: var(--shadow);
+}
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.25);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.settings-panel {
+  width: min(480px, 100%);
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.settings-panel label {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.settings-panel input,
+.settings-panel select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.settings-help {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 980px) {
+  .war-room-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell {
+    padding: 20px 16px 32px;
+  }
+}
