@@ -3,13 +3,24 @@ import type { ThemeMode } from '../../services/config'
 interface SettingsPanelProps {
   baseUrl: string
   theme: ThemeMode
+  requestTimeoutMs: number
   isOpen: boolean
   onClose: () => void
   onBaseUrlChange: (value: string) => void
   onThemeChange: (value: ThemeMode) => void
+  onRequestTimeoutMsChange: (value: number) => void
 }
 
-export function SettingsPanel({ baseUrl, theme, isOpen, onClose, onBaseUrlChange, onThemeChange }: SettingsPanelProps) {
+export function SettingsPanel({
+  baseUrl,
+  theme,
+  requestTimeoutMs,
+  isOpen,
+  onClose,
+  onBaseUrlChange,
+  onThemeChange,
+  onRequestTimeoutMsChange,
+}: SettingsPanelProps) {
   if (!isOpen) return null
 
   return (
@@ -44,8 +55,20 @@ export function SettingsPanel({ baseUrl, theme, isOpen, onClose, onBaseUrlChange
           </select>
         </label>
 
+        <label>
+          Timeout da requisição (ms)
+          <input
+            type="number"
+            min={5000}
+            max={300000}
+            step={1000}
+            value={requestTimeoutMs}
+            onChange={(event) => onRequestTimeoutMsChange(Number(event.target.value))}
+          />
+        </label>
+
         <p className="settings-help">
-          A API é montada como <code>{baseUrl}/chat</code> e qualquer falha de CORS ou disponibilidade é exibida explicitamente para o operador.
+          A API usa <code>{baseUrl}/chat</code>. Ajuste o timeout para prompts longos de incidente.
         </p>
       </div>
     </div>

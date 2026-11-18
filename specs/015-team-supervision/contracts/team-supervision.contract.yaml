@@ -1,0 +1,105 @@
+contract: team-supervision
+version: 1
+description: >
+  Contrato para a rota `team`, o estado compartilhado do blackboard e a decisão
+  estruturada do supervisor que orienta a próxima ação e o resumo operacional.
+
+route:
+  method: POST
+  path: /team
+  content_type: application/json
+
+request:
+  required_fields: [sessionId, userId, role, blackboard, message]
+  fields:
+    sessionId:
+      type: string
+      required: true
+    userId:
+      type: string
+      required: true
+    role:
+      type: string
+      enum: [supervisor, analyst, planner, executor]
+      required: true
+    blackboard:
+      type: object
+      required: true
+      required_fields: [objective, summary, openItems]
+      fields:
+        objective:
+          type: string
+        summary:
+          type: string
+        openItems:
+          type: array
+    message:
+      type: string
+      required: true
+      min_length: 1
+
+responses:
+  "200":
+    description: Sessão de equipe processada com sucesso
+    body:
+      required_fields: [decision, blackboard, trace]
+      fields:
+        decision:
+          type: object
+          required_fields: [next, brief]
+          fields:
+            next:
+              type: string
+            brief:
+              type: string
+        blackboard:
+          type: object
+          required_fields: [objective, summary, openItems]
+        trace:
+          type: array
+          item_schema:
+            type: object
+            required_fields: [type, from, to, summary, context]
+            fields:
+              type:
+                type: string
+              from:
+                type: string
+              to:
+                type: string
+              summary:
+                type: string
+              context:
+                type: string
+  "400":
+    description: Requisição inválida ou violação de regra de papel
+    body:
+      required_fields: [issues]
+      fields:
+        issues:
+          type: array
+  "409":
+    description: Limite de equipe excedido ou conflito de estado
+    body:
+      required_fields: [error]
+      fields:
+        error:
+          type: string
+
+behavioral_rules:
+  - id: BR-001
+    rule: A rota `/team` deve funcionar apenas com uma sessão de equipe válida e um supervisor presente.
+  - id: BR-002
+    rule: O supervisor deve responder com `next` e `brief` em formato estruturado para orientar a próxima ação.
+  - id: BR-003
+    rule: O analista pode ler o blackboard, mas não pode alterar a decisão, o plano ou o estado compartilhado.
+  - id: BR-004
+    rule: O planner pode propor o próximo passo, mas não pode invocar ferramentas diretamente.
+  - id: BR-005
+    rule: O executor só pode atuar em incidentes no fluxo de incident response permitido pela sessão.
+  - id: BR-006
+    rule: Cada transição de responsabilidade deve emitir um evento `handoff` no trace e no render de raciocínio.
+  - id: BR-007
+    rule: A sessão não pode exceder 8 participantes, mesmo quando a entrada aponte para uma equipe maior.
+  - id: BR-008
+    rule: O blackboard atua como estado autorizativo único da operação durante a sessão; não pode divergir do trace.

@@ -8,6 +8,7 @@ export interface ChatMessage {
   content: string
   timestamp: string
   traceId?: string
+  trace?: TraceStep[]
 }
 
 export interface ChatMetrics {

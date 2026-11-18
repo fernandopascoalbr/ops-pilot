@@ -19,6 +19,10 @@ import { LearningReflector, MemoryStore, type MemoryRecord } from '../memory/ind
 import { routeForStrategy, routeRequest } from '../graph/production-graph.js';
 import { logObsEvent } from '../obs/logger.js';
 import { SqliteRequestTraceStore, type RequestTraceStore } from '../store/index.js';
+import { blackboardAsText, createBlackboard, createParticipant, createTeamSession, MAX_TEAM_PARTICIPANTS, type TeamSession } from '../team/index.js';
+import { canRolePerform, normalizeRoleName, teamRoleSchema, type SupervisorNextValue, type TeamRole } from '../team/roles.js';
+import { supervisor } from '../team/supervisor.js';
+import { createHandoffEvent } from '../team/handoff.js';
 import { chatRequestSchema } from './chat-schema.js';
 
 const DEFAULT_TIMEOUT_MS = 180_000;
@@ -48,6 +52,40 @@ const sinceDurationSchema = z.string().trim().regex(/^\d+[smhd]$/, 'since must b
 
 const statsQuerySchema = z.object({
   since: sinceDurationSchema.default('24h'),
+});
+
+const teamParticipantSchema = z.object({
+  id: z.string().trim().min(1).optional(),
+  name: z.string().trim().min(1).default('Participant'),
+  role: teamRoleSchema.default('analyst'),
+  canWrite: z.boolean().optional(),
+  canUseTools: z.boolean().optional(),
+  status: z.enum(['active', 'inactive']).default('active'),
+});
+
+const teamBlackboardSchema = z.object({
+  objective: z.string().trim().min(1).default('Equipe em supervisão'),
+  summary: z.string().trim().min(1).default('Estado inicial da equipe.'),
+  incidentId: z.string().trim().nullable().optional(),
+  openItems: z.array(z.string().trim().min(1)).default([]),
+  decisionHistory: z.array(z.object({
+    next: z.string().trim().min(1),
+    brief: z.string().trim().min(1),
+    createdAt: z.string().trim().default(() => new Date().toISOString()),
+    actor: z.string().trim().default('supervisor'),
+  })).default([]),
+  lastUpdatedBy: z.string().trim().default('supervisor'),
+  updatedAt: z.string().trim().default(() => new Date().toISOString()),
+}).passthrough();
+
+const teamRequestSchema = z.object({
+  requestId: z.string().trim().min(1).optional(),
+  sessionId: z.string().trim().min(1).default('team-session'),
+  userId: z.string().trim().min(1).default('user-input'),
+  role: teamRoleSchema.default('supervisor'),
+  blackboard: teamBlackboardSchema.default(() => createBlackboard()),
+  message: z.string().trim().min(1).default('Supervisionar o estado da equipe.'),
+  participants: z.array(teamParticipantSchema).max(MAX_TEAM_PARTICIPANTS).default([]),
 });
 
 type ChatResultBody = {
@@ -81,6 +119,11 @@ type MemoryHttpResponse =
 type StatsHttpResponse =
   | { status: 200; body: Record<string, unknown> }
   | { status: 400; body: { issues: z.ZodIssue[] | Array<{ code: string; message: string; path: (string | number)[] }> } };
+
+type TeamHttpResponse =
+  | { status: 200; body: { requestId: string; sessionId: string; decision: { next: string; brief: string }; blackboard: Record<string, unknown>; trace: unknown[] } }
+  | { status: 400; body: { requestId: string; issues: z.ZodIssue[] | Array<{ code: string; message: string; path: (string | number)[] }> } }
+  | { status: 409; body: { requestId: string; error: string } };
 
 export type ChatServerOptions = {
   timeoutMs?: number;
@@ -155,6 +198,93 @@ function composeMessageWithHistory(
   return {
     input: result.input,
     contextBreakdown: result.contextBreakdown,
+  };
+}
+
+export async function processTeamRequest(body: unknown, options: ChatServerOptions = {}): Promise<TeamHttpResponse> {
+  const requestId = options.requestId ?? randomUUID();
+  const parsed = teamRequestSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return {
+      status: 400,
+      body: { requestId, issues: parsed.error.issues },
+    };
+  }
+
+  const resolvedRole = normalizeRoleName(parsed.data.role ?? 'supervisor');
+  if (resolvedRole === 'analista' || resolvedRole === 'planejador') {
+    if (!canRolePerform(resolvedRole, 'plan') && !canRolePerform(resolvedRole, 'read')) {
+      return {
+        status: 400,
+        body: { requestId, issues: [{ code: 'custom', message: `Role ${resolvedRole} is not permitted to operate in the team flow.`, path: ['role'] }] },
+      };
+    }
+  }
+
+  const participants = parsed.data.participants.length > 0
+    ? parsed.data.participants.map((participant) => ({
+      id: participant.id ?? `${participant.role}-${participant.name}`,
+      name: participant.name,
+      role: normalizeRoleName(participant.role),
+      canWrite: participant.canWrite ?? participant.role === 'supervisor',
+      canUseTools: participant.canUseTools ?? participant.role === 'supervisor',
+      status: participant.status,
+    }))
+    : [
+      createParticipant({ id: 'supervisor-1', name: 'Supervisor', role: 'supervisor', canWrite: true, canUseTools: true }),
+      createParticipant({ id: 'analyst-1', name: 'Analista', role: 'analista', canWrite: false, canUseTools: false }),
+      createParticipant({ id: 'planner-1', name: 'Planejador', role: 'planejador', canWrite: false, canUseTools: false }),
+      createParticipant({ id: 'executor-1', name: 'Executor', role: 'executor', canWrite: false, canUseTools: false }),
+    ];
+
+  if (participants.length > MAX_TEAM_PARTICIPANTS) {
+    return {
+      status: 409,
+      body: { requestId, error: 'A equipe excedeu o limite máximo de 8 participantes.' },
+    };
+  }
+
+  const normalizedDecisionHistory = (parsed.data.blackboard.decisionHistory ?? []).map((decision) => ({
+    next: decision.next,
+    brief: decision.brief,
+    createdAt: decision.createdAt ?? new Date().toISOString(),
+    actor: normalizeRoleName(decision.actor ?? 'supervisor'),
+  }));
+
+  const session = createTeamSession({
+    id: parsed.data.sessionId,
+    participants,
+    blackboard: createBlackboard({
+      ...parsed.data.blackboard,
+      decisionHistory: normalizedDecisionHistory,
+    }),
+    trace: [],
+  });
+
+  const decision = await supervisor(session.blackboard);
+  const updatedBlackboard = {
+    ...session.blackboard,
+    decisionHistory: [{
+      next: decision.next,
+      brief: decision.brief,
+      createdAt: new Date().toISOString(),
+      actor: 'supervisor',
+    }, ...(session.blackboard.decisionHistory ?? [])],
+    lastUpdatedBy: 'supervisor',
+    updatedAt: new Date().toISOString(),
+  };
+
+  const trace = [...decision.trace];
+  return {
+    status: 200,
+    body: {
+      requestId,
+      sessionId: session.id,
+      decision: { next: decision.next, brief: decision.brief },
+      blackboard: updatedBlackboard,
+      trace,
+    },
   };
 }
 
@@ -629,6 +759,28 @@ export function createServer(options: ChatServerOptions = {}): Server {
       return;
     }
 
+    if (request.method === 'POST' && url.pathname === '/team') {
+      const requestId = randomUUID();
+      const body = await readJsonBody(request);
+      if (body === Symbol.for('invalid-json-body')) {
+        sendJson(response, 400, {
+          requestId,
+          issues: [
+            {
+              code: 'custom',
+              message: 'Invalid JSON body',
+              path: [],
+            },
+          ],
+        }, requestId);
+        return;
+      }
+
+      const result = await processTeamRequest(body, { ...options, requestId });
+      sendJson(response, result.status, result.body, requestId);
+      return;
+    }
+
     if (request.method === 'GET' && url.pathname.startsWith('/requests/')) {
       const requestId = url.pathname.slice('/requests/'.length);
       if (!requestId) {
@@ -675,7 +827,7 @@ export function createServer(options: ChatServerOptions = {}): Server {
       return;
     }
 
-    if (request.method === 'POST' && url.pathname !== '/chat') {
+    if (request.method === 'POST' && url.pathname !== '/chat' && url.pathname !== '/team') {
       sendJson(response, 404, { error: 'Not Found' });
       return;
     }

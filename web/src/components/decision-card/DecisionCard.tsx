@@ -1,4 +1,5 @@
 import type { DecisionCard as DecisionCardType } from '../../types/decision'
+import { MarkdownContent } from '../markdown/MarkdownContent'
 
 interface DecisionCardProps {
   card: DecisionCardType
@@ -16,7 +17,7 @@ export function DecisionCard({ card, isSelected, onSelect, onApprove, onReject }
         <h3>{card.title}</h3>
       </button>
 
-      <p>{card.summary}</p>
+      <MarkdownContent content={card.summary} className="markdown-content" />
 
       <div className="decision-meta">
         <span className={`pill status-${card.status}`}>{card.status}</span>

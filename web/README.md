@@ -30,3 +30,10 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## OpsPilot settings
+
+- The API target is built as `{baseUrl}/chat`.
+- Request timeout is configurable in the settings panel (default: `60000ms`, range: `5000-300000ms`).
+- AI responses are rendered as Markdown.
+- "Decisões" opens in a modal, and each AI message has its own "Ver raciocínio" modal with backend trace data.

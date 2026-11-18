@@ -1,4 +1,5 @@
 import type { TraceStep } from '../../types/trace'
+import { MarkdownContent } from '../markdown/MarkdownContent'
 
 interface TracePanelProps {
   trace: TraceStep[]
@@ -30,7 +31,7 @@ export function TracePanel({ trace, selectedTraceId, onSelect }: TracePanelProps
                 <span className={`trace-dot ${step.type}`} />
                 <div>
                   <strong>{step.type}</strong>
-                  <p>{step.message}</p>
+                  <MarkdownContent content={step.message} className="markdown-content trace-markdown" />
                 </div>
               </button>
             </li>

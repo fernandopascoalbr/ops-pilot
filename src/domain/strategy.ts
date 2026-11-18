@@ -7,7 +7,8 @@ export type TraceEventType =
   | 'answer'
   | 'summarize'
   | 'route'
-  | 'fallback';
+  | 'fallback'
+  | 'handoff';
 
 export type TraceEvent = {
   type: TraceEventType;

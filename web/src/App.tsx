@@ -2,16 +2,29 @@ import { useEffect, useState } from 'react'
 import { ChatPanel } from './components/chat/ChatPanel'
 import { DecisionCard } from './components/decision-card/DecisionCard'
 import { SettingsPanel } from './components/settings/SettingsPanel'
-import { TracePanel } from './components/trace-panel/TracePanel'
 import { useWarRoom } from './features/war-room/use-war-room'
-import { DEFAULT_BASE_URL, DEFAULT_THEME, readStoredConfig, writeStoredConfig, type ThemeMode } from './services/config'
+import {
+  DEFAULT_BASE_URL,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_THEME,
+  readStoredConfig,
+  writeStoredConfig,
+  type ThemeMode,
+} from './services/config'
 import './App.css'
 
 function App() {
   const initialConfig = readStoredConfig()
   const [baseUrl, setBaseUrl] = useState(initialConfig.baseUrl)
   const [theme, setTheme] = useState<ThemeMode>(initialConfig.theme)
+  const [requestTimeoutMs, setRequestTimeoutMs] = useState(initialConfig.requestTimeoutMs)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [decisionsOpen, setDecisionsOpen] = useState(false)
+  const handleRequestTimeoutMsChange = (value: number) => {
+    if (!Number.isFinite(value)) return
+    const bounded = Math.min(300_000, Math.max(5_000, Math.round(value)))
+    setRequestTimeoutMs(bounded)
+  }
 
   const {
     messages,
@@ -25,7 +38,7 @@ function App() {
     sendPrompt,
     updateDecision,
     retryLastPrompt,
-  } = useWarRoom(baseUrl)
+  } = useWarRoom(baseUrl, requestTimeoutMs)
 
   useEffect(() => {
     const effectiveTheme = theme === 'system'
@@ -35,8 +48,12 @@ function App() {
       : theme
 
     document.documentElement.dataset.theme = effectiveTheme
-    writeStoredConfig({ baseUrl: baseUrl || DEFAULT_BASE_URL, theme })
-  }, [baseUrl, theme])
+    writeStoredConfig({
+      baseUrl: baseUrl || DEFAULT_BASE_URL,
+      theme,
+      requestTimeoutMs: Number.isFinite(requestTimeoutMs) ? requestTimeoutMs : DEFAULT_REQUEST_TIMEOUT_MS,
+    })
+  }, [baseUrl, theme, requestTimeoutMs])
 
   const selectedTrace = traceEvents.find((step) => step.id === selectedTraceId) ?? traceEvents[0] ?? null
 
@@ -49,6 +66,9 @@ function App() {
         </div>
 
         <div className="toolbar">
+          <button type="button" className="ghost-button" onClick={() => setDecisionsOpen(true)}>
+            Ver decisões
+          </button>
           <button type="button" className="ghost-button" onClick={() => setSettingsOpen(true)} aria-label="Abrir configurações da API">
             ⚙
           </button>
@@ -71,14 +91,31 @@ function App() {
         <div className="primary-column">
           <ChatPanel messages={messages} isSending={isSending} onSubmit={sendPrompt} />
         </div>
+      </main>
 
-        <aside className="secondary-column">
-          <section className="panel">
-            <div className="panel-header">
-              <span className="eyebrow">Ação</span>
-              <h3>Decisões</h3>
+      <SettingsPanel
+        baseUrl={baseUrl || DEFAULT_BASE_URL}
+        theme={theme || DEFAULT_THEME}
+        requestTimeoutMs={requestTimeoutMs || DEFAULT_REQUEST_TIMEOUT_MS}
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onBaseUrlChange={setBaseUrl}
+        onThemeChange={setTheme}
+        onRequestTimeoutMsChange={handleRequestTimeoutMsChange}
+      />
+
+      {decisionsOpen ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Decisões">
+          <div className="modal-panel">
+            <div className="settings-header">
+              <div>
+                <span className="eyebrow">Ação</span>
+                <h3>Decisões</h3>
+              </div>
+              <button type="button" className="icon-button" onClick={() => setDecisionsOpen(false)} aria-label="Fechar decisões">
+                ×
+              </button>
             </div>
-
             {decisions.length === 0 ? (
               <div className="empty-panel">
                 <p>Nenhuma recomendação pendente.</p>
@@ -100,20 +137,9 @@ function App() {
                 ))}
               </div>
             )}
-          </section>
-
-          <TracePanel trace={traceEvents} selectedTraceId={selectedTraceId} onSelect={setSelectedTraceId} />
-        </aside>
-      </main>
-
-      <SettingsPanel
-        baseUrl={baseUrl || DEFAULT_BASE_URL}
-        theme={theme || DEFAULT_THEME}
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        onBaseUrlChange={setBaseUrl}
-        onThemeChange={setTheme}
-      />
+          </div>
+        </div>
+      ) : null}
 
       {status === 'loading' ? <div className="loading-overlay" aria-live="polite">Processando resposta…</div> : null}
     </div>

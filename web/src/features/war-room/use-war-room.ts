@@ -21,7 +21,7 @@ export interface UseWarRoomResult {
   lastPrompt: string
 }
 
-export function useWarRoom(baseUrl: string): UseWarRoomResult {
+export function useWarRoom(baseUrl: string, requestTimeoutMs: number): UseWarRoomResult {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [decisions, setDecisions] = useState<DecisionCard[]>([])
   const [traceEvents, setTraceEvents] = useState<TraceStep[]>([])
@@ -58,7 +58,7 @@ export function useWarRoom(baseUrl: string): UseWarRoomResult {
         message: trimmed,
         strategy: 'react',
         reflect: true,
-      }, baseUrl)
+      }, baseUrl, requestTimeoutMs)
 
       const traceId = response.trace[0]?.id ?? crypto.randomUUID()
       const assistantMessage: ChatMessage = {
@@ -67,6 +67,7 @@ export function useWarRoom(baseUrl: string): UseWarRoomResult {
         content: response.answer,
         timestamp: new Date().toISOString(),
         traceId,
+        trace: response.trace,
       }
 
       setTraceEvents(response.trace)
@@ -99,7 +100,7 @@ export function useWarRoom(baseUrl: string): UseWarRoomResult {
     } finally {
       setIsSending(false)
     }
-  }, [baseUrl])
+  }, [baseUrl, requestTimeoutMs])
 
   const updateDecision = useCallback((cardId: string, nextStatus: DecisionCard['status']) => {
     setDecisions((current) => current.map((card) => card.id === cardId ? { ...card, status: nextStatus, decisionBy: 'Operator' } : card))

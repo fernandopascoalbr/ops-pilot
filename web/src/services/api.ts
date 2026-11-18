@@ -1,11 +1,15 @@
 import type { ChatRequest, ChatResponse } from '../types/chat'
-import { buildChatUrl, getApiBaseUrl, normalizeBaseUrl } from './config'
+import { buildChatUrl, getApiBaseUrl, getApiTimeoutMs, normalizeBaseUrl } from './config'
 import type { ApiErrorState } from '../features/war-room/states'
 
-export async function postChatRequest(payload: ChatRequest, baseUrl: string = getApiBaseUrl()): Promise<ChatResponse> {
+export async function postChatRequest(
+  payload: ChatRequest,
+  baseUrl: string = getApiBaseUrl(),
+  requestTimeoutMs: number = getApiTimeoutMs(),
+): Promise<ChatResponse> {
   const url = buildChatUrl(baseUrl)
   const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), 20000)
+  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs)
 
   try {
     const response = await fetch(url, {
@@ -35,9 +39,10 @@ export async function postChatRequest(payload: ChatRequest, baseUrl: string = ge
     return data as ChatResponse
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
+      const timeoutSeconds = Math.round(requestTimeoutMs / 1000)
       throw {
         code: 'timeout',
-        message: 'The request exceeded the time limit. Check the backend availability or response time.',
+        message: `The request exceeded the configured ${timeoutSeconds}s limit. Check backend availability/latency or increase timeout in settings.`,
         retryable: true,
         actions: ['Retry the request', 'Check the backend status'],
       } satisfies ApiErrorState
